@@ -57,9 +57,9 @@ curl -X POST https://rookiegamers.com/api/admin/games/handofnine/publish -H "aut
 curl -X POST https://rookiegamers.com/api/admin/games/unsays/server-key -H "authorization: Bearer $ADMIN_TOKEN" -H 'content-type: application/json' -d '{}'
 ```
 
-The launch games are seeded in `src/catalog.js`. unsays and BuyYourFriends start live; Hand of Nine, YouCult and Glitch Homiez wait for their URLs.
+The launch games are seeded in `src/catalog.js`. unsays and BuyYourFriends start live; Hand of Nine and Glitch Homiez wait for their URLs.
 
-FishTartTycoon is hosted here. Its build goes live with its own deploy, from the fish-tart-tycoon repo:
+FishTartTycoon and YouCult are hosted here. Each goes live with its own deploy from its repo (`dist/rookiegamers` for FishTartTycoon, `dist-rookiegamers` for YouCult):
 
 ```sh
 curl -X POST https://rookiegamers.com/api/admin/games/fishtarttycoon/owner -H "authorization: Bearer $ADMIN_TOKEN" -H 'content-type: application/json' -d '{"email":"dev@example.com"}'

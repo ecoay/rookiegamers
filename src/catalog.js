@@ -17,7 +17,9 @@ export const SEED_GAMES = [
   // Listed but not live until their URLs are in. Set url and origins, then publish.
   { slug: 'handofnine', title: 'Hand of Nine', kind: 'linked', live: false, developer: 'ecoay',
     blurb: 'Arrange nine cards on a 3x3 table, match twelve touching edges, and chase a Perfect Hand worth 2400.', tags: ['cards', 'puzzle'], color: '#d4a64a' },
-  { slug: 'youcult', title: 'YouCult', kind: 'linked', live: false, developer: 'ecoay', blurb: '', tags: [], color: '#ff2bd6' },
+  { slug: 'youcult', title: 'YouCult', kind: 'hosted', live: false, developer: 'ecoay',
+    blurb: 'Found a cult from the things you won\'t shut up about, rule your cardboard followers, survive the schism and fight rival cults for The Feed.',
+    tags: ['strategy', 'satire', 'sim'], color: '#ff2bd6', score_label: 'Season score', score_mode: 'best', score_order: 'desc' },
   { slug: 'fishtarttycoon', title: 'FishTartTycoon', kind: 'hosted', live: false, developer: 'ecoay',
     blurb: 'Humans build an industrial civilisation because three hungry seals want fish tarts. The seals are still sitting forty feet away.',
     tags: ['tycoon', 'idle'], color: '#4fb3ff', score_label: 'Season revenue', score_mode: 'best', score_order: 'desc' },

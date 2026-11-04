@@ -4,25 +4,27 @@ import { signToken, verifyToken, TOKEN_TTL } from './tokens.js';
 import { gameEvent, submitScore, topScores, rankOf, fame, playNext, frontPage, sealIfDue } from './play.js';
 import * as dev from './dev.js';
 import { createShare } from './growth.js';
+import { moneyV1, moneyDev } from './money-api.js';
 
 export const json = (data, status = 200, extra = {}) => {
   const h = new Headers({ 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...extra });
   if (extra['set-cookie']) { h.delete('set-cookie'); for (const c of [].concat(extra['set-cookie'])) if (c) h.append('set-cookie', c); }
   return new Response(JSON.stringify(data), { status, headers: h });
 };
-async function readJSON(req) { try { return await req.json(); } catch { return {}; } }
+export async function readJSON(req) { try { return await req.json(); } catch { return {}; } }
 
 /* ---------- /api/v1: what the SDK calls, from any game origin ---------- */
 
 // The SDK API authenticates with Bearer tokens, never cookies, so it's safe to open to any origin.
 export const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-allow-headers': 'authorization, content-type', 'access-control-max-age': '86400' };
-const cjson = (data, status = 200) => { if (data && 'status' in data) { const { status: _, ...rest } = data; data = rest; } return json(data, status, CORS); };
+export const cjson = (data, status = 200) => { if (data && 'status' in data) { const { status: _, ...rest } = data; data = rest; } return json(data, status, CORS); };
 
-async function bearerPlayer(DB, env, req, game) {
+export async function bearerPlayer(DB, env, req, game) {
   const m = /^Bearer\s+(\S+)$/.exec(req.headers.get('authorization') || '');
   if (!m || m[1].startsWith('rgs_') || m[1].startsWith('rgk_')) return null;
   const c = await verifyToken(DB, env, m[1], { aud: game });
-  return c ? c.sub : null;
+  // Ad and purchase receipts are signed with the same keys but are never player tokens.
+  return c && !c.use ? c.sub : null;
 }
 
 // Mint a player token for a game. Called from the portal itself (same origin, session cookie).
@@ -123,6 +125,11 @@ export async function apiV1(req, env, DB, url) {
     return p ? cjson({ player: publicPlayer(p) }) : cjson({ error: 'Unknown player.' }, 404);
   }
 
+  // Ads and the store.
+  if (path.startsWith('/ads/') || path.startsWith('/store/')) {
+    const r = await moneyV1(req, env, DB, url, path);
+    if (r) return r;
+  }
   return cjson({ error: 'Not found' }, 404);
 }
 
@@ -230,6 +237,9 @@ export async function apiDev(req, env, DB, url, { admin = false } = {}) {
         return json({ ok: true, owner: p.id });
       }
     }
+    // Products, ad review, revenue and payouts.
+    const r = await moneyDev(req, env, DB, url, path, pid, admin);
+    if (r) return r;
   } catch (e) {
     if (e instanceof dev.DevError) return json({ error: e.message }, e.status);
     throw e;

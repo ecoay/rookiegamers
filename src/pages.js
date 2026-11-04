@@ -4,6 +4,7 @@ import { getShare, isBot, countShareClick, validVia, referralStats, gemHistory, 
 import { frontPage, topScores, fame, sealIfDue } from './play.js';
 import { isDeveloper, myGames, listKeys, siteURL } from './dev.js';
 import { mintFor } from './api.js';
+import { devMoneySection } from './money-api.js';
 import SDK_DOCS from '../docs/SDK.md';
 
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -292,12 +293,14 @@ node rg.mjs deploy ./my-game --game my-game</code></pre></div></div>`;
     return html(layout({ title: 'Publish', me, active: '/dev', body, scripts: `<script>document.getElementById('joinForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);const r=await fetch('/api/dev/join',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({invite:f.get('invite')})});const j=await r.json();if(r.ok)location.href='/dev';else{const m=document.getElementById('joinMsg');m.innerHTML='<div class="note err"></div>';m.firstChild.textContent=j.error}}</script>` }));
   }
   const [games, keys] = await Promise.all([myGames(DB, me.id), listKeys(DB, me.id)]);
+  const cash = await devMoneySection(DB, env, me.id, games);
   const body = `<h1>Developer</h1><p class="lede">Make an API key, connect your AI or the CLI, and publish. Games go live as soon as they pass the checks.</p>
 <h2>Your games</h2>${games.length ? `<table class="t"><tr><th>Game</th><th>Kind</th><th>Status</th><th>Version</th></tr>${games.map(g => `<tr><td>${g.live ? `<a href="/play/${esc(g.slug)}">${esc(g.title)}</a>` : esc(g.title)}</td><td>${esc(g.kind)}</td><td>${g.live ? 'Live' : 'Not published'}</td><td>${esc(g.version || '-')}</td></tr>`).join('')}</table>` : '<p class="muted">No games yet. Create one with your agent, the CLI, or the API.</p>'}
 <h2>API keys</h2><form class="form" id="keyForm" style="flex-direction:row;max-width:520px"><input name="label" placeholder="Key name, like laptop or claude" aria-label="Key name"><button class="btn" type="submit">Make key</button></form><div id="keyMsg" style="margin:10px 0"></div>
 ${keys.length ? `<table class="t"><tr><th>Name</th><th>Key</th><th>Last used</th><th></th></tr>${keys.map(k => `<tr><td>${esc(k.label)}</td><td><code>${esc(k.prefix)}...</code></td><td>${k.used_at ? new Date(k.used_at).toISOString().slice(0, 10) : 'never'}</td><td><button class="btn ghost small" data-del="${esc(k.prefix)}" type="button">Delete</button></td></tr>`).join('')}</table>` : ''}
+${cash.body}
 ${agents}<h2>Docs</h2><p><a href="/docs">The SDK and developer API reference</a>.</p>`;
-  const script = `<script>
+  const script = cash.script + `<script>
 document.getElementById('keyForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);const r=await fetch('/api/dev/keys',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({label:f.get('label')})});const j=await r.json();const m=document.getElementById('keyMsg');
 m.innerHTML=r.ok?'<div class="note ok">Your new key (shown once, keep it secret): <code id="newKey"></code></div>':'<div class="note err"></div>';if(r.ok)document.getElementById('newKey').textContent=j.key;else m.firstChild.textContent=j.error};
 document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{await fetch('/api/dev/keys',{method:'DELETE',headers:{'content-type':'application/json'},body:JSON.stringify({prefix:b.dataset.del})});location.reload()});

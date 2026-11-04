@@ -24,7 +24,7 @@ Add one script tag and you get sign-in, leaderboards, the Hall of Fame and cross
 ## Rules of thumb
 
 - Call `rg.game.loaded()` once, when the game can be played. Publishing checks look for it.
-- Wrap real play in `gameplayStart()` / `gameplayStop()`. The portal uses this to count playtime and XP, and later to keep ads out of play.
+- Wrap real play in `gameplayStart()` / `gameplayStop()`. The portal uses this to count playtime and XP.
 - Guests can always play. Only ask for sign-in when it matters, like saving a score: `if (!await rg.user.get()) await rg.user.login()`.
 - Never put outside ad code in a game. The portal serves ads for every game.
 - The RookieGamers account is the only sign-in. Don't ship your own login or another one (Google, Firebase Auth, Supabase Auth, Auth0, Clerk, Facebook and so on). Use `rg.user.login()`, and `rg.user.token()` if your server needs to know who's playing. This holds wherever your game runs: on the portal, on your own site, or on other portals.
@@ -99,6 +99,43 @@ Everything is optional. `score` makes the message and the link preview a challen
 
 When the player is signed in, the link credits them. A friend who signs up through it and plays for 10 minutes earns the sharer 100 gems and earns the friend 25. Players also earn 50 gems for each social account they link. Gems are a reward currency on RookieGamers, not money. Your game's stats show its share links, the visits they brought and the sign-ups.
 
+### Ads
+
+The portal serves every ad. Your game only says when there's a good moment. Ask for ads on a live game (from `/dev`, `POST /api/dev/games/<slug>/ads`, or the `request_ads` tool) and RookieGamers reviews it. Until it's approved, these calls resolve right away with `{ shown: false }`, so you can wire them in from day one. You keep 70% of ad revenue.
+
+| Call | Does |
+| --- | --- |
+| `rg.ads.available()` | `{ rewarded, midgame }`: which formats this game can show now |
+| `rg.ads.rewarded({ before, after })` | A rewarded ad the player chose to watch. Resolves to `{ shown, rewarded, receipt }`. Give the reward only when `rewarded` is true |
+| `rg.ads.midgame({ before, after })` | A short ad at a natural break, like between levels. At most one every 3 minutes per player. Resolves to `{ shown }` |
+
+`before` and `after` are called just before the ad covers the game and just after it's gone: mute and pause there. Rewarded ads last about 15 seconds and the player can close them early (no reward). `receipt` is a signed token (ES256, the same keys as player tokens, with `use: "receipt"`, `kind: "ad"` and `aud` your slug), so a game server can check a reward was really earned.
+
+Ads come from sponsors RookieGamers sells, an ad network on portal pages, or "play next" ads for other RookieGamers games. Never add ad code of your own.
+
+### Store
+
+Each game has its own store: items players keep and monthly passes. You set the products and prices (from `/dev`, `PUT /api/dev/games/<slug>/products/<sku>`, or the `set_product` tool). Each product can be:
+
+- **bought for cash** through RookieGamers' checkout. You keep 90% after Stripe's fee and any sales tax;
+- **unlocked by watching ads**, a number of rewarded ads you choose (passes unlocked this way last `adDays` days);
+- **bought for less in RookieGamers coin**, if the game has coin on (coming soon).
+
+| Call | Does |
+| --- | --- |
+| `rg.store.items()` | `{ items, owned }`. Each item has `sku`, `title`, `kind` (`"item"` or `"pass"`), `priceCents`, `adUnlock`, `adProgress`, `coinPriceCents` and `owned` |
+| `rg.store.owned()` | `[{ sku, source, expiresAt }]` for the signed-in player, `[]` for guests |
+| `rg.store.has(sku)` | `true` if the player owns it now |
+| `rg.store.buy(sku)` | Signs the player in if needed and opens checkout in a new window. Resolves to `{ bought, sku }` once paid, or `bought: false` if they closed it |
+| `rg.store.unlock(sku)` | Plays one rewarded ad toward the item. Resolves to `{ rewarded, progress, needed, unlocked }` |
+
+The portal keeps track of what each player owns, on every device. A game's server can ask too:
+
+```http
+GET https://rookiegamers.com/api/v1/store/<slug>/entitlements?player=<player id>
+Authorization: Bearer rgs_...your server key...
+```
+
 ### Coming later
 
 These exist so you can wire them in now. Until they launch they resolve harmlessly.
@@ -106,9 +143,7 @@ These exist so you can wire them in now. Until they launch they resolve harmless
 | Module | Calls | Until launch |
 | --- | --- | --- |
 | Cloud saves | `rg.data.get(key)`, `rg.data.set(key, value)` | Uses `localStorage` |
-| Store | `rg.store.buy(sku)`, `rg.store.owned()` | `{ ok: false }` and `[]`. Every item can be bought with cash, unlocked with ads, or bought for less with RookieGamers coins (18+, opt-in). The portal runs all three; the game only asks what the player owns |
 | Guilds | `rg.guild.mine()`, `rg.guild.board()` | `null` and `[]` |
-| Ads | `rg.ads.midgame()`, `rg.ads.rewarded()` | Resolve right away with no ad (`rewarded` gives `{ rewarded: false }`) |
 | Wallet (18+, opt-in) | `rg.wallet.get()` | `null`. Never needed to play |
 
 ## Games with a server
@@ -159,12 +194,27 @@ All calls take `Authorization: Bearer rgk_...` (make a key at `rookiegamers.com/
 | `POST /api/dev/games/<slug>/unpublish` | Take the game down |
 | `POST /api/dev/games/<slug>/server-key` | Make a new server key (shown once) |
 | `GET /api/dev/games/<slug>/stats` | Plays, playtime, returning players, which games sent players, top scores |
+| `PUT /api/dev/games/<slug>/products/<sku>` | Add or change a product: `{ title, blurb, kind, priceCents, adUnlock, adDays, active }` |
+| `GET /api/dev/games/<slug>/products` | The game's products |
+| `DELETE /api/dev/games/<slug>/products/<sku>` | Remove a product (switched off instead if anyone owns it) |
+| `POST /api/dev/games/<slug>/ads` | Ask for ads: `{ formats: ["rewarded", "midgame"] }`. `GET` shows the review status and any note |
+| `GET /api/dev/games/<slug>/money` | Store sales, ad revenue, refunds and your share by month |
+| `GET /api/dev/payouts` | Your balance (ready, clearing, paid) and payout history |
+| `POST /api/dev/payouts/connect` | A link to set up (or finish) your Stripe account for payouts |
+
+## Getting paid
+
+All money goes through RookieGamers, and RookieGamers pays you:
+
+- **Store:** 90% of each sale after Stripe's fee and any sales tax. It clears 30 days after the sale, so refunds can come out first. A refund takes the same share back.
+- **Ads:** 70% of what the ads in your game earned, credited each month once the month's numbers are in.
+- **Payouts:** on the 1st of each month, by Stripe transfer, once you have at least $10 cleared. Connect your Stripe account from `/dev` first. Stripe handles your ID and tax forms.
 
 ## Coins (optional)
 
 The RookieGamers coin runs on Solana. It's a discount, nothing else: there's no gambling and no prizes paid in coins. Each developer chooses per game:
 
-- **Coin off (the default):** the store sells for cash or ads. The portal collects the money and pays the developer their cash share. No crypto anywhere.
+- **Coin off (the default):** the store sells for cash or ads. The portal collects the money and pays the developer their cash share (see Getting paid). No crypto anywhere.
 - **Coin on:** players can also pay a lower price in coins. Of every coin payment, 30% is burned, 30% goes to the treasury (the coin's liquidity pool), and 40% goes to the developer's Solana wallet.
 
 Turn it on with `{ "coin": true, "payoutWallet": "<Solana address>" }` when you create or update the game.

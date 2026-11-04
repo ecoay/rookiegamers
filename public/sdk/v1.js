@@ -284,13 +284,104 @@
     async link(o) { await ready(); o = o || {}; const r = await shareLink({ room: o.room, text: o.text }); return r.ok ? ok({ url: r.url, credited: r.credited }) : r; },
     room() { return qs.get('rg_room') || qs.get('room') || null; },
   };
-  const soon = 'Coming soon on RookieGamers.';
-  const storeApi = { async buy() { return bad(soon); }, async owned() { return []; } };
   const guild = { async mine() { return null; }, async board() { return []; } };
-  const ads = { async midgame() { return ok({ shown: false }); }, async rewarded() { return ok({ shown: false, rewarded: false }); } };
+
+  /* ---------- ads ---------- */
+
+  // The portal serves every ad. Until the game is approved for ads these resolve to
+  // { shown: false }, so it's safe to wire them in from day one.
+  function adFrame(url, view) {
+    return new Promise(resolve => {
+      const f = document.createElement('iframe');
+      f.src = url; f.title = 'Ad'; f.allow = 'autoplay';
+      f.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;border:0;z-index:2147483647;background:transparent';
+      const done = v => { window.removeEventListener('message', onMsg); clearTimeout(t); f.remove(); resolve(v); };
+      // The ad frame is ours (we made it), so trust its window. Its origin reads "null" when the
+      // game page is itself sandboxed, since the ad frame inherits the sandbox.
+      function onMsg(e) { if ((e.origin === PORTAL || e.origin === 'null') && e.source === f.contentWindow && e.data && e.data.rg === 1 && e.data.type === 'ad-done' && e.data.view === view) done(e.data.data || {}); }
+      window.addEventListener('message', onMsg);
+      const t = setTimeout(() => done({ shown: false, rewarded: false }), 3 * 60000);
+      document.body.appendChild(f);
+    });
+  }
+
+  async function showAd(format, o) {
+    await ready(); o = o || {};
+    const sku = o.sku ? String(o.sku) : undefined;
+    const hook = fn => { if (typeof fn === 'function') try { fn(); } catch (e) { console.error(e); } };
+    let r;
+    if (S.mode === 'test') {
+      hook(o.before);
+      await new Promise(res => { toast('Test ad (' + format + ')'); setTimeout(res, 1200); });
+      r = { shown: true, rewarded: format === 'rewarded', receipt: format === 'rewarded' ? 'test-receipt' : undefined };
+      if (sku) { S.test.owned = S.test.owned || []; if (!S.test.owned.includes(sku)) S.test.owned.push(sku); r.unlocked = true; r.sku = sku; }
+      hook(o.after);
+      return ok(r);
+    }
+    if (S.mode === 'portal') {
+      hook(o.before);
+      r = await ask('ad', { format, sku }, 4 * 60000) || { shown: false, rewarded: false };
+    } else {
+      const start = await call('POST', '/ads/start', { game: S.game, format, sku, mode: 'standalone' }, true);
+      if (!start.ok || !start.fill) return ok({ shown: false, rewarded: false, reason: start.reason || start.error, signin: !!start.signin });
+      hook(o.before);
+      r = await adFrame(start.url, start.view);
+    }
+    hook(o.after);
+    if (r.error) return bad(r.error);
+    return ok(Object.assign({ shown: false, rewarded: false }, r));
+  }
+  const ads = {
+    // { rewarded, midgame }: which ad formats this game can show right now.
+    async available() { await ready(); if (S.mode === 'test') return ok({ rewarded: true, midgame: true }); return call('GET', '/ads/status?game=' + S.game); },
+    midgame(o) { return showAd('midgame', o); },
+    rewarded(o) { return showAd('rewarded', o); },
+  };
+
+  /* ---------- the game's store ---------- */
+
+  function waitForOrder(order, w) {
+    return new Promise(resolve => {
+      let left = 30 * 60, closedAt = 0;
+      const tick = async () => {
+        const r = await call('GET', '/store/orders/' + order + '?game=' + S.game, null, true);
+        if (r.ok && r.paid) return resolve(true);
+        if (w && w.closed && !closedAt) closedAt = Date.now();
+        // Webhooks can lag a few seconds behind the checkout window closing.
+        if ((closedAt && Date.now() - closedAt > 20000) || --left <= 0) return resolve(false);
+        setTimeout(tick, 2000);
+      };
+      setTimeout(tick, 2000);
+    });
+  }
+  const storeApi = {
+    // { items: [{ sku, title, kind, priceCents, adUnlock, adProgress, coinPriceCents, owned }], owned }
+    async items() {
+      await ready();
+      if (S.mode === 'test') return ok({ items: [{ sku: 'sample.skin', title: 'Sample skin', blurb: '', kind: 'item', priceCents: 199, currency: 'usd', adUnlock: 3, adProgress: 0, owned: (S.test.owned || []).includes('sample.skin') }], owned: (S.test.owned || []).map(sku => ({ sku, source: 'test', expiresAt: null })) });
+      return call('GET', '/store/' + S.game, null, true);
+    },
+    // What the player owns: [{ sku, source, expiresAt }]. Empty for guests.
+    async owned() { const r = await storeApi.items(); return r.ok ? r.owned : []; },
+    async has(sku) { return (await storeApi.owned()).some(o => o.sku === sku); },
+    async buy(sku, o) {
+      await ready(); o = o || {};
+      if (S.mode === 'test') { S.test.owned = S.test.owned || []; if (!S.test.owned.includes(sku)) S.test.owned.push(sku); return ok({ bought: true, sku }); }
+      if (!await freshToken()) { await user.login(); if (!await freshToken()) return bad('Sign in to buy.', { signin: true }); }
+      const w = window.open('about:blank', 'rg_checkout', 'width=520,height=760');
+      const r = await call('POST', '/store/checkout', { game: S.game, sku, method: o.method }, true);
+      if (!r.ok) { if (w) w.close(); return r; }
+      if (!w) return bad('The checkout window was blocked. Allow pop-ups and try again.', { url: r.url });
+      w.location.href = r.url;
+      const paid = await waitForOrder(r.order, w);
+      return ok({ bought: paid, sku, order: r.order });
+    },
+    // Unlock an item by watching rewarded ads (the developer sets how many).
+    unlock(sku, o) { return showAd('rewarded', Object.assign({}, o, { sku })); },
+  };
   const wallet = { available: false, async get() { return null; } };
 
-  window.rg = { version: '1.1.0', portal: PORTAL, init, game, user, scores, fame, promo, share, data, invite, store: storeApi, guild, ads, wallet,
+  window.rg = { version: '1.2.0', portal: PORTAL, init, game, user, scores, fame, promo, share, data, invite, store: storeApi, guild, ads, wallet,
     get mode() { return S.mode; } };
   if (SCRIPT && SCRIPT.dataset.game) init({ game: SCRIPT.dataset.game });
 })();

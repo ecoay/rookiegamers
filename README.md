@@ -40,8 +40,11 @@ Secrets (Workers & Pages, rookiegamers, Settings, Variables and Secrets):
 | `ADMIN_TOKEN` | The admin API: developer invites, assigning game owners, editing any game |
 | `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | Sign in with SceneSpot (or any OpenID Connect provider). Optional `OIDC_NAME` (button label, default "SceneSpot") and `OIDC_ID` (default `scenespot`). Redirect URI: `https://rookiegamers.com/auth/oidc/callback` |
 | `GOOGLE_`, `DISCORD_`, `X_`, `TWITCH_`, `GITHUB_` + `CLIENT_ID` and `CLIENT_SECRET` | Sign in with, and link, that network. Each one shows up on the sign-in page and the profile once its two secrets are set. Redirect URI: `https://rookiegamers.com/auth/<google\|discord\|x\|twitch\|github>/callback`. X needs a confidential OAuth 2.0 client |
+| `STRIPE_SECRET_KEY` | The store and payouts. The portal's Stripe account is the seller; turn on Connect (Express) for developer payouts |
+| `STRIPE_WEBHOOK_SECRET` | Stripe webhooks at `https://rookiegamers.com/stripe/webhook`. Send `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `invoice.paid`, `customer.subscription.deleted`, `charge.refunded`, and `account.updated` (from connected accounts too) |
+| `ADSENSE_CLIENT` | Optional. `ca-pub-...` once AdSense approves rookiegamers.com for H5 Games Ads. Without it, ads are sponsors and "play next" house ads |
 
-Variables in `wrangler.jsonc`: `SITE_URL` (also the token issuer), `EMAIL_FROM`, `OPEN_DEVELOPERS` (`"1"` lets anyone signed in become a developer; otherwise it takes an invite), and `GAMES_HOST` once `games.rookiegamers.com` routes to this Worker. Until `GAMES_HOST` is set, hosted games are served from `/hosted/<slug>/` in an opaque-origin sandbox.
+Variables in `wrangler.jsonc`: `SITE_URL` (also the token issuer), `EMAIL_FROM`, `STRIPE_TAX` (`"1"` turns on Stripe Tax at checkout), `ADS_TEST` (`"1"` shows Google test ads), `OPEN_DEVELOPERS` (`"1"` lets anyone signed in become a developer; otherwise it takes an invite), and `GAMES_HOST` once `games.rookiegamers.com` routes to this Worker. Until `GAMES_HOST` is set, hosted games are served from `/hosted/<slug>/` in an opaque-origin sandbox.
 
 Until `rookiegamers.com` points at Cloudflare, set `SITE_URL` to the workers.dev address.
 
@@ -58,6 +61,24 @@ curl -X POST https://rookiegamers.com/api/admin/games/handofnine/publish -H "aut
 # the unsays server key, for its RG_SERVER_KEY secret
 curl -X POST https://rookiegamers.com/api/admin/games/unsays/server-key -H "authorization: Bearer $ADMIN_TOKEN" -H 'content-type: application/json' -d '{}'
 ```
+
+### Ads, stores and payouts
+
+```sh
+A="authorization: Bearer $ADMIN_TOKEN"; J='content-type: application/json'
+# games waiting for ad review, then approve one (or "rejected" with a note the developer sees, or "paused")
+curl https://rookiegamers.com/api/admin/ads/queue -H "$A"
+curl -X POST https://rookiegamers.com/api/admin/games/unsays/ads/review -H "$A" -H "$J" -d '{"status":"approved"}'
+# a sponsor: $8 per 1000 completed views, $500 budget, optionally only some games
+curl -X POST https://rookiegamers.com/api/admin/campaigns -H "$A" -H "$J" -d '{"name":"Acme","headline":"Acme gaming chairs","image":"https://...","clickUrl":"https://...","cpmCents":800,"budgetCents":50000}'
+# the ad network's real payout for a month, split by each game's network views (or pass rows per game)
+curl -X POST https://rookiegamers.com/api/admin/ads/network -H "$A" -H "$J" -d '{"month":"2026-11","grossCents":123456}'
+# what a payout run would pay, then run it (the cron does both on the 1st)
+curl -X POST https://rookiegamers.com/api/admin/payouts/run -H "$A" -H "$J" -d '{"dryRun":true}'
+curl https://rookiegamers.com/api/admin/money -H "$A"
+```
+
+On the 1st (the same cron as the Hall of Fame), last month's sponsor views are priced into the ledger and every developer with at least $10 cleared is paid. Games the portal owns (no owner set) are recorded in the ledger but never paid out.
 
 The launch games are seeded in `src/catalog.js`. unsays and BuyYourFriends start live; Hand of Nine and Glitch Homiez wait for their URLs.
 
@@ -82,7 +103,8 @@ Use `localhost`, not `127.0.0.1`, in the browser: the SDK only trusts messages f
 ## Rules
 
 - Accounts are 13 and up. Younger players play as guests.
-- The crypto layer is 18+ and opt-in, per player and per game. The coin (Solana) is only a discount: items can be paid in cash, unlocked with ads, or bought for less in coins. Of a coin payment, 30% is burned, 30% goes to the treasury (the liquidity pool) and 40% to the developer. Games with coin off sell for cash and ads, and the developer is paid in cash. The store lands in phase 3; this repo has the per-game switch and the player's 18+ flag.
-- No outside ad code in games. The portal serves ads for every game.
+- The crypto layer is 18+ and opt-in, per player and per game. The coin (Solana) is only a discount: items can be paid in cash, unlocked with ads, or bought for less in coins. Of a coin payment, 30% is burned, 30% goes to the treasury (the liquidity pool) and 40% to the developer. Games with coin off sell for cash and ads, and the developer is paid in cash. Paying in coin isn't wired up yet; this repo has the per-game switch, coin prices and the player's 18+ flag.
+- No outside ad code in games. The portal serves ads for every game, once it approves the game for ads.
+- All money goes through the portal's Stripe account. Developers get 90% of store sales (after Stripe's fee and tax, after a 30-day hold) and 70% of ad revenue, paid monthly over $10 through Stripe Connect.
 - The RookieGamers account is a game's only sign-in, wherever the game runs. Publishing blocks hosted builds that ship another sign-in (Google, Firebase Auth, Supabase Auth, Auth0, Clerk and others).
 - Gems reward word of mouth. A friend who signs up through a player's invite or share link and plays for 10 minutes earns that player 100 gems and earns the friend 25 (at most 20 paid referrals a day per player). Each social network a player links earns 50 gems, once. Gems are not money and never convert to coin or cash.

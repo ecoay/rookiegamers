@@ -101,6 +101,31 @@
     });
     return sharing;
   }
+  // Ads run on the portal page, over the game, so the game never touches ad code.
+  let adOpen = null;
+  function showAd(o) {
+    if (adOpen) return adOpen;
+    adOpen = (async () => {
+      const a = await token();
+      const headers = { 'content-type': 'application/json' };
+      if (a.token) headers.authorization = 'Bearer ' + a.token;
+      let s = null;
+      try { s = await (await fetch('/api/v1/ads/start', { method: 'POST', headers, body: JSON.stringify({ game: B.game, format: o.format, sku: o.sku, mode: 'portal' }) })).json(); } catch (e) { s = null; }
+      if (!s || !s.fill) return { shown: false, rewarded: false, reason: s ? s.reason || s.error : 'offline', signin: !!(s && s.signin) };
+      return new Promise(resolve => {
+        const f = document.createElement('iframe');
+        f.src = s.url; f.title = 'Ad'; f.allow = 'autoplay';
+        f.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;border:0;z-index:2147483647;background:transparent';
+        const done = v => { window.removeEventListener('message', onMsg); clearTimeout(t); f.remove(); resolve(v); };
+        const onMsg = e => { if (e.origin === location.origin && e.source === f.contentWindow && e.data && e.data.rg === 1 && e.data.type === 'ad-done' && e.data.view === s.view) done(e.data.data || {}); };
+        window.addEventListener('message', onMsg);
+        const t = setTimeout(() => done({ shown: false, rewarded: false }), 3 * 60000);
+        document.body.appendChild(f);
+      });
+    })().finally(() => { adOpen = null; });
+    return adOpen;
+  }
+
   const sb = document.getElementById('shareBtn');
   if (sb) sb.onclick = () => share({});
 
@@ -126,6 +151,7 @@
       case 'token': return answer(await token());
       case 'login': return answer(await login());
       case 'share': return answer(await share(m.data));
+      case 'ad': return answer(await showAd(m.data || {}));
       case 'game':
         document.body.dataset.playing = m.data && m.data.event === 'start' ? '1' : '0';
         if (m.data && m.data.event === 'stop') setTimeout(refreshBoards, 1500);

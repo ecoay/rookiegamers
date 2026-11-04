@@ -106,22 +106,7 @@
   setInterval(() => { if (document.visibilityState === 'visible') refreshBoards(); }, 60000);
 
   document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
-    // Keep the side boards current after a round, without reloading the page.
-  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  async function refreshBoards() {
-    for (const [id, board] of [['bm', 'monthly'], ['ba', 'alltime']]) {
-      try {
-        const r = await fetch('/api/v1/scores/' + B.game + '?limit=10&board=' + board);
-        if (!r.ok) continue;
-        const rows = (await r.json()).rows;
-        if (!rows.length) continue;
-        document.getElementById(id).innerHTML = '<ol class="board">' + rows.map(x => '<li class="top' + x.rank + '"><span class="n">' + x.rank + '</span><span class="who"><a href="/u/' + esc(x.player.id) + '">' + esc(x.player.name) + '</a>' + (x.player.title ? '<small>' + esc(x.player.title) + '</small>' : '') + '</span><span class="s">' + Number(x.score).toLocaleString('en-US') + '</span></li>').join('') + '</ol>';
-      } catch (e) { /* keep the old board */ }
-    }
-  }
-  setInterval(() => { if (document.visibilityState === 'visible') refreshBoards(); }, 60000);
-
-  document.querySelectorAll('.tabs button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    document.querySelectorAll('.tabs button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
     document.getElementById('bm').hidden = b.dataset.b !== 'm';
     document.getElementById('ba').hidden = b.dataset.b !== 'a';
   });

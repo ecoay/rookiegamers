@@ -18,7 +18,9 @@ export const SEED_GAMES = [
   { slug: 'handofnine', title: 'Hand of Nine', kind: 'linked', live: false, developer: 'ecoay',
     blurb: 'Arrange nine cards on a 3x3 table, match twelve touching edges, and chase a Perfect Hand worth 2400.', tags: ['cards', 'puzzle'], color: '#d4a64a' },
   { slug: 'youcult', title: 'YouCult', kind: 'linked', live: false, developer: 'ecoay', blurb: '', tags: [], color: '#ff2bd6' },
-  { slug: 'fishtarttycoon', title: 'FishTartTycoon', kind: 'linked', live: false, developer: 'ecoay', blurb: '', tags: ['tycoon'], color: '#4fb3ff' },
+  { slug: 'fishtarttycoon', title: 'FishTartTycoon', kind: 'hosted', live: false, developer: 'ecoay',
+    blurb: 'Humans build an industrial civilisation because three hungry seals want fish tarts. The seals are still sitting forty feet away.',
+    tags: ['tycoon', 'idle'], color: '#4fb3ff', score_label: 'Season revenue', score_mode: 'best', score_order: 'desc' },
   { slug: 'glitch-homiez', title: 'Glitch Homiez', kind: 'linked', live: false, developer: 'ecoay', blurb: '', tags: [], color: '#ff2bd6' },
 ];
 

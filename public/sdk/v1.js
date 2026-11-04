@@ -250,14 +250,47 @@
     async get(k) { await ready(); return store.get('rg.data.' + S.game + '.' + k); },
     async set(k, v) { await ready(); store.set('rg.data.' + S.game + '.' + k, v); return ok(); },
   };
-  const invite = { async link(o) { await ready(); const room = o && o.room ? '?room=' + encodeURIComponent(o.room) : ''; return ok({ url: PORTAL + '/play/' + S.game + room }); } };
+  /* ---------- sharing and invites ---------- */
+
+  // A share link from the portal. Signed in, it credits the player for the friends it brings.
+  async function shareLink(o) {
+    o = o || {};
+    if (S.mode === 'test') return ok({ url: PORTAL + '/play/' + S.game + (o.room ? '?room=' + encodeURIComponent(o.room) : ''), text: o.text || 'Come play with me.', credited: true });
+    return call('POST', '/shares', { game: S.game, score: o.score, room: o.room, text: o.text }, true);
+  }
+
+  async function share(o) {
+    await ready(); o = o || {};
+    if (S.mode === 'portal') return (await ask('share', { score: o.score, room: o.room, text: o.text }, 30 * 60000)) || bad('Sharing was cancelled.');
+    const r = await shareLink(o);
+    if (!r.ok) return r;
+    if (S.mode === 'test') { log('would share', r.url); return ok({ url: r.url, credited: true, shared: 'test' }); }
+    if (navigator.share) {
+      try { await navigator.share({ title: document.title, text: r.text, url: r.url }); return ok({ url: r.url, credited: r.credited, shared: 'native' }); }
+      catch (e) { if (e && e.name === 'AbortError') return ok({ url: r.url, credited: r.credited, shared: null }); }
+    }
+    try { await navigator.clipboard.writeText(r.url); toast('Link copied. Paste it anywhere to share.'); return ok({ url: r.url, credited: r.credited, shared: 'copy' }); }
+    catch (e) { toast('Share this link: ' + r.url); return ok({ url: r.url, credited: r.credited, shared: null }); }
+  }
+
+  function toast(msg) {
+    const old = document.getElementById('rg-toast'); if (old) old.remove();
+    const el = document.createElement('div'); el.id = 'rg-toast'; el.setAttribute('role', 'status'); el.textContent = msg;
+    el.style.cssText = 'position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:2147483647;max-width:calc(100vw - 32px);padding:10px 16px;border-radius:999px;background:#16131f;color:#fff;font:600 14px system-ui,sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.4);word-break:break-all';
+    document.body.appendChild(el); setTimeout(() => el.remove(), 4000);
+  }
+
+  const invite = {
+    async link(o) { await ready(); o = o || {}; const r = await shareLink({ room: o.room, text: o.text }); return r.ok ? ok({ url: r.url, credited: r.credited }) : r; },
+    room() { return qs.get('rg_room') || qs.get('room') || null; },
+  };
   const soon = 'Coming soon on RookieGamers.';
   const storeApi = { async buy() { return bad(soon); }, async owned() { return []; } };
   const guild = { async mine() { return null; }, async board() { return []; } };
   const ads = { async midgame() { return ok({ shown: false }); }, async rewarded() { return ok({ shown: false, rewarded: false }); } };
   const wallet = { available: false, async get() { return null; } };
 
-  window.rg = { version: '1.0.0', portal: PORTAL, init, game, user, scores, fame, promo, data, invite, store: storeApi, guild, ads, wallet,
+  window.rg = { version: '1.1.0', portal: PORTAL, init, game, user, scores, fame, promo, share, data, invite, store: storeApi, guild, ads, wallet,
     get mode() { return S.mode; } };
   if (SCRIPT && SCRIPT.dataset.game) init({ game: SCRIPT.dataset.game });
 })();

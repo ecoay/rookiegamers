@@ -52,6 +52,58 @@
     return waiting;
   }
 
+  // The share sheet. Signed-in players get a link that credits them with the friends it brings.
+  const NETS = [
+    ['X', (u, t) => 'https://x.com/intent/post?text=' + encodeURIComponent(t) + '&url=' + encodeURIComponent(u)],
+    ['WhatsApp', (u, t) => 'https://wa.me/?text=' + encodeURIComponent(t + ' ' + u)],
+    ['Facebook', u => 'https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(u)],
+    ['Reddit', (u, t) => 'https://www.reddit.com/submit?url=' + encodeURIComponent(u) + '&title=' + encodeURIComponent(t)],
+    ['Telegram', (u, t) => 'https://t.me/share/url?url=' + encodeURIComponent(u) + '&text=' + encodeURIComponent(t)],
+    ['Email', (u, t) => 'mailto:?subject=' + encodeURIComponent(B.title + ' on RookieGamers') + '&body=' + encodeURIComponent(t + '\n\n' + u)],
+  ];
+  let sharing = null;
+  function share(opts) {
+    if (sharing) return sharing;
+    sharing = new Promise(async resolve => {
+      const o = opts || {};
+      let r = null;
+      try {
+        const res = await fetch('/api/share', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ game: B.game, score: o.score, room: o.room, text: o.text }) });
+        r = await res.json();
+        if (!res.ok) r = null;
+      } catch (e) { r = null; }
+      if (!r) { sharing = null; return resolve({ ok: false, error: 'Couldn\'t make a share link.' }); }
+      const dlg = document.getElementById('shareDlg');
+      const nets = document.getElementById('shareNets');
+      const input = document.getElementById('shareUrl');
+      let how = null;
+      document.getElementById('shareText').textContent = r.text;
+      input.value = r.url;
+      nets.textContent = '';
+      if (navigator.share) {
+        const b = document.createElement('button'); b.type = 'button'; b.textContent = 'More...';
+        b.onclick = () => navigator.share({ title: B.title, text: r.text, url: r.url }).then(() => { how = 'native'; dlg.close(); }).catch(() => {});
+        nets.append(b);
+      }
+      for (const [name, link] of NETS) {
+        const a = document.createElement('a'); a.textContent = name; a.href = link(r.url, r.text); a.target = '_blank'; a.rel = 'noopener';
+        a.onclick = () => { how = name.toLowerCase(); };
+        nets.append(a);
+      }
+      document.getElementById('shareCopy').onclick = async () => {
+        input.select();
+        try { await navigator.clipboard.writeText(r.url); } catch (e) { document.execCommand('copy'); }
+        how = how || 'copy'; document.getElementById('shareCopy').textContent = 'Copied';
+      };
+      document.getElementById('shareClose').onclick = () => dlg.close();
+      dlg.addEventListener('close', () => { document.getElementById('shareCopy').textContent = 'Copy'; sharing = null; resolve({ ok: true, url: r.url, credited: r.credited, shared: how }); }, { once: true });
+      dlg.showModal();
+    });
+    return sharing;
+  }
+  const sb = document.getElementById('shareBtn');
+  if (sb) sb.onclick = () => share({});
+
   function refreshHeader(user) {
     const link = document.getElementById('signinLink');
     if (!link || !user) return;
@@ -73,6 +125,7 @@
       case 'hello': ready = true; return answer({ game: B.game, ref: B.ref, auth: await token() });
       case 'token': return answer(await token());
       case 'login': return answer(await login());
+      case 'share': return answer(await share(m.data));
       case 'game':
         document.body.dataset.playing = m.data && m.data.event === 'start' ? '1' : '0';
         if (m.data && m.data.event === 'stop') setTimeout(refreshBoards, 1500);

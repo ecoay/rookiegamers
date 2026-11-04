@@ -5,13 +5,25 @@ import { SEED_GAMES } from './catalog.js';
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS players (id TEXT PRIMARY KEY, name TEXT NOT NULL, hue INTEGER NOT NULL DEFAULT 0, email TEXT UNIQUE,
-    xp INTEGER NOT NULL DEFAULT 0, title TEXT, adult_at INTEGER, created_at INTEGER NOT NULL, seen_at INTEGER NOT NULL)`,
+    xp INTEGER NOT NULL DEFAULT 0, title TEXT, adult_at INTEGER, gems INTEGER NOT NULL DEFAULT 0, referred_by TEXT, ref_paid INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL, seen_at INTEGER NOT NULL)`,
+  // Gems: the portal's reward currency, for linking social accounts and bringing friends. One row per
+  // reward; (player, reason, ref) is unique so each reward pays once. Gems are not money and never
+  // turn into coin or cash.
+  `CREATE TABLE IF NOT EXISTS gems (player_id TEXT NOT NULL, reason TEXT NOT NULL, ref TEXT NOT NULL DEFAULT '', amount INTEGER NOT NULL,
+    at INTEGER NOT NULL, PRIMARY KEY (player_id, reason, ref))`,
+  `CREATE INDEX IF NOT EXISTS gems_reason ON gems(reason, at)`,
+  // Share links (/s/<id>). Each one credits the player who shared it for visits and sign-ups.
+  `CREATE TABLE IF NOT EXISTS shares (id TEXT PRIMARY KEY, player_id TEXT NOT NULL, game TEXT NOT NULL, score INTEGER, room TEXT, text TEXT,
+    clicks INTEGER NOT NULL DEFAULT 0, signups INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)`,
+  `CREATE INDEX IF NOT EXISTS shares_game ON shares(game, created_at)`,
+  `CREATE INDEX IF NOT EXISTS shares_player ON shares(player_id, created_at)`,
   // The crypto layer is opt-in and 18+ only (players.adult_at set). Nothing here is needed to play.
   `CREATE TABLE IF NOT EXISTS wallets (player_id TEXT NOT NULL, chain TEXT NOT NULL, address TEXT NOT NULL, verified_at INTEGER NOT NULL,
     PRIMARY KEY (chain, address))`,
   `CREATE INDEX IF NOT EXISTS wallets_player ON wallets(player_id)`,
-  // One row per way to sign in. provider is 'email' (subject = the address) or an OpenID Connect
-  // provider id such as 'scenespot' (subject = its "sub" claim). Adding SceneSpot later is a new row.
+  // One row per way to sign in. provider is 'email' (subject = the address), 'scenespot', or a social
+  // network such as 'google' or 'discord' (subject = that network's user id). Linking one is a new row.
   `CREATE TABLE IF NOT EXISTS identities (provider TEXT NOT NULL, subject TEXT NOT NULL, player_id TEXT NOT NULL, profile TEXT NOT NULL DEFAULT '{}',
     created_at INTEGER NOT NULL, PRIMARY KEY (provider, subject))`,
   `CREATE INDEX IF NOT EXISTS identities_player ON identities(player_id)`,
@@ -56,8 +68,17 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS submits (game TEXT NOT NULL, player_id TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (game, player_id))`,
 ];
 
+// Columns added after a table first shipped. Each runs once; "duplicate column" means it's there.
+const COLUMNS = [
+  'ALTER TABLE players ADD COLUMN gems INTEGER NOT NULL DEFAULT 0',
+  'ALTER TABLE players ADD COLUMN referred_by TEXT',
+  'ALTER TABLE players ADD COLUMN ref_paid INTEGER NOT NULL DEFAULT 0',
+];
+
 export async function migrate(DB) {
   await DB.batch(SCHEMA.map(s => DB.prepare(s)));
+  for (const c of COLUMNS) { try { await DB.prepare(c).run(); } catch (e) { if (!/duplicate column/i.test(String(e && e.message))) throw e; } }
+  await DB.prepare('CREATE INDEX IF NOT EXISTS players_referred ON players(referred_by)').run();
   const t = now();
   await DB.batch(SEED_GAMES.map(g => DB.prepare(
     `INSERT OR IGNORE INTO games (slug, title, kind, url, origins, developer, blurb, tags, color, devices, multiplayer, score_label, score_mode, score_order, max_score, live, released_at, created_at)

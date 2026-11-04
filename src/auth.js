@@ -1,8 +1,10 @@
 import { createPlayer, newId, sha256, now, safeJSON, cleanText } from './db.js';
+import { GEMS, grantGems, recordReferral, VIA_COOKIE, SHARE_COOKIE } from './growth.js';
 
-// Portal sign-in. Players sign in with an email link today, and with any OpenID Connect provider
-// configured through OIDC_* secrets. SceneSpot becomes the main sign-in by setting those secrets,
-// with no code change. Each way to sign in is an identity row pointing at one player.
+// Portal sign-in. Players sign in with an email link, SceneSpot (any OpenID Connect provider set
+// through OIDC_* secrets), or a social network: Google, Discord, X, Twitch or GitHub, each switched
+// on by its <NAME>_CLIENT_ID and <NAME>_CLIENT_SECRET secrets. Each way to sign in is an identity
+// row pointing at one player, and linking another network to your account earns gems.
 
 const COOKIE = 'rg_sid';
 const YEAR = 365 * 24 * 3600;
@@ -50,32 +52,73 @@ export async function signOut(DB, req) {
   return setCookie(req, COOKIE, '', 0);
 }
 
+// Social networks. OpenID Connect ones are found by discovery; the others list their endpoints and
+// how to read a user from their API. Redirect URI for each: https://rookiegamers.com/auth/<id>/callback
+const NETWORKS = {
+  google: { name: 'Google', issuer: 'https://accounts.google.com', scope: 'openid profile email' },
+  discord: {
+    name: 'Discord', scope: 'identify email', authorize: 'https://discord.com/oauth2/authorize', token: 'https://discord.com/api/oauth2/token', userinfo: 'https://discord.com/api/users/@me',
+    user: u => ({ sub: u.id, name: u.global_name || u.username, handle: u.username, email: u.verified ? u.email : null, picture: u.avatar ? `https://cdn.discordapp.com/avatars/${u.id}/${u.avatar}.png` : null }),
+  },
+  x: {
+    name: 'X', scope: 'users.read tweet.read', authorize: 'https://twitter.com/i/oauth2/authorize', token: 'https://api.twitter.com/2/oauth2/token',
+    userinfo: 'https://api.twitter.com/2/users/me?user.fields=profile_image_url', basicAuth: true,
+    user: j => ({ sub: j.data && j.data.id, name: j.data && j.data.name, handle: j.data && j.data.username, picture: j.data && j.data.profile_image_url }),
+  },
+  twitch: { name: 'Twitch', issuer: 'https://id.twitch.tv/oauth2', scope: 'openid' },
+  github: {
+    name: 'GitHub', scope: 'read:user', authorize: 'https://github.com/login/oauth/authorize', token: 'https://github.com/login/oauth/access_token', userinfo: 'https://api.github.com/user',
+    user: u => ({ sub: u.id != null ? String(u.id) : null, name: u.name || u.login, handle: u.login, picture: u.avatar_url }),
+  },
+};
+export const NETWORK_IDS = Object.keys(NETWORKS);
+
 export function oidcConfig(env) {
   if (!env.OIDC_ISSUER || !env.OIDC_CLIENT_ID || !env.OIDC_CLIENT_SECRET) return null;
-  return { id: env.OIDC_ID || 'scenespot', name: env.OIDC_NAME || 'SceneSpot', issuer: env.OIDC_ISSUER.replace(/\/$/, ''), clientId: env.OIDC_CLIENT_ID, secret: env.OIDC_CLIENT_SECRET, scope: env.OIDC_SCOPE || 'openid profile email' };
+  return { id: env.OIDC_ID || 'scenespot', name: env.OIDC_NAME || 'SceneSpot', issuer: env.OIDC_ISSUER.replace(/\/$/, ''), clientId: env.OIDC_CLIENT_ID, secret: env.OIDC_CLIENT_SECRET, scope: env.OIDC_SCOPE || 'openid profile email', route: 'oidc' };
+}
+
+// The config for one sign-in route (/auth/<route>), or null when it isn't switched on.
+export function socialConfig(env, route) {
+  if (route === 'oidc') return oidcConfig(env);
+  const n = NETWORKS[route];
+  const key = route.toUpperCase();
+  if (!n || !env[key + '_CLIENT_ID'] || !env[key + '_CLIENT_SECRET']) return null;
+  return { ...n, id: route, route, clientId: env[key + '_CLIENT_ID'], secret: env[key + '_CLIENT_SECRET'] };
 }
 
 export const providers = env => {
   const o = oidcConfig(env);
-  return { email: !!env.RESEND_API_KEY || env.DEV_LOGIN === '1', oidc: o ? { id: o.id, name: o.name } : null };
+  const social = [o, ...NETWORK_IDS.map(id => socialConfig(env, id))].filter(Boolean).map(c => ({ id: c.id, route: c.route, name: c.name }));
+  return { email: !!env.RESEND_API_KEY || env.DEV_LOGIN === '1', oidc: o ? { id: o.id, name: o.name } : null, social };
 };
 
 // Find the player for an identity, or attach it. A signed-in player who adds a new provider keeps
 // their account (that's "link to SceneSpot with one click"). An identity that already belongs to
 // someone signs in as that someone, and accounts are never merged silently.
-export async function attachIdentity(DB, { provider, subject, profile = {}, current = null, email = null, name = null }) {
+// A new account needs the player to have said they're 13 or older (allowNew). Pass via and share
+// from the visitor's cookies so a new account counts as a referral.
+export async function attachIdentity(DB, { provider, subject, profile = {}, current = null, email = null, name = null, allowNew = true, via = null, share = null }) {
   const row = await DB.prepare('SELECT player_id FROM identities WHERE provider = ? AND subject = ?').bind(provider, subject).first();
   if (row) {
     await DB.prepare('UPDATE identities SET profile = ? WHERE provider = ? AND subject = ?').bind(JSON.stringify(profile), provider, subject).run();
     return row.player_id;
   }
-  let pid = current;
+  let pid = current, created = false;
   if (!pid && email) pid = (await DB.prepare('SELECT id FROM players WHERE email = ?').bind(email).first())?.id || null;
-  if (!pid) pid = await createPlayer(DB, { name: name || (email ? email.split('@')[0] : null) });
+  if (!pid) {
+    if (!allowNew) return null;
+    pid = await createPlayer(DB, { name: name || (email ? email.split('@')[0] : null) });
+    created = true;
+  }
   await DB.prepare('INSERT INTO identities (provider, subject, player_id, profile, created_at) VALUES (?, ?, ?, ?, ?)').bind(provider, subject, pid, JSON.stringify(profile), now()).run();
   if (email) await DB.prepare('UPDATE players SET email = ? WHERE id = ? AND email IS NULL AND NOT EXISTS (SELECT 1 FROM players WHERE email = ?)').bind(email, pid, email).run();
+  if (provider !== 'email') await grantGems(DB, pid, GEMS.link, 'link', provider);
+  if (created && via) await recordReferral(DB, pid, via, share);
   return pid;
 }
+const referralFrom = req => { const c = cookies(req); return { via: c[VIA_COOKIE] || null, share: c[SHARE_COOKIE] || null }; };
+const clearReferral = req => [setCookie(req, VIA_COOKIE, '', 0), setCookie(req, SHARE_COOKIE, '', 0)];
 
 /* ---------- email link ---------- */
 
@@ -109,20 +152,24 @@ export async function emailVerify(DB, req) {
   await DB.prepare('DELETE FROM login_tokens WHERE token = ? OR expires_at < ?').bind(hash, now()).run();
   if (!row || row.expires_at < now()) return redirect('/signin?expired=1');
   const current = await sessionPlayer(DB, req);
-  const pid = await attachIdentity(DB, { provider: 'email', subject: row.email, email: row.email, current });
-  return redirect(safeNext(row.next), [await newSession(DB, req, pid)]);
+  const pid = await attachIdentity(DB, { provider: 'email', subject: row.email, email: row.email, current, ...referralFrom(req) });
+  return redirect(safeNext(row.next), [await newSession(DB, req, pid), ...clearReferral(req)]);
 }
 
-/* ---------- OpenID Connect (SceneSpot, or any standard provider) ---------- */
+/* ---------- SceneSpot and social networks (OpenID Connect or OAuth 2) ---------- */
 
-let discovery = null;
+const discovered = new Map();
 async function discover(o) {
-  if (discovery?.issuer === o.issuer) return discovery.doc;
+  if (discovered.has(o.issuer)) return discovered.get(o.issuer);
   const r = await fetch(`${o.issuer}/.well-known/openid-configuration`);
   if (!r.ok) throw new Error(`OIDC discovery failed: ${r.status}`);
   const doc = await r.json();
-  discovery = { issuer: o.issuer, doc };
+  discovered.set(o.issuer, doc);
   return doc;
+}
+async function endpoints(o) {
+  if (!o.issuer) return { authorization_endpoint: o.authorize, token_endpoint: o.token, userinfo_endpoint: o.userinfo };
+  return discover(o);
 }
 
 async function pkce() {
@@ -132,53 +179,74 @@ async function pkce() {
   return { verifier, challenge };
 }
 
-export async function oidcStart(env, req) {
-  const o = oidcConfig(env);
+// /auth/<route>?next=...&age=1. age=1 means the player ticked "I'm 13 or older", which a new
+// account needs. A signed-in player uses the same route to link another network.
+export async function socialStart(env, req, route) {
+  const o = socialConfig(env, route);
   if (!o) return redirect('/signin');
   const url = new URL(req.url);
-  const doc = await discover(o);
+  const doc = await endpoints(o);
   const state = newId('', 32), nonce = newId('', 32);
   const { verifier, challenge } = await pkce();
   const q = new URLSearchParams({
-    client_id: o.clientId, redirect_uri: `${url.origin}/auth/oidc/callback`, response_type: 'code', scope: o.scope,
-    state, nonce, code_challenge: challenge, code_challenge_method: 'S256',
+    client_id: o.clientId, redirect_uri: `${url.origin}/auth/${o.route}/callback`, response_type: 'code', scope: o.scope,
+    state, code_challenge: challenge, code_challenge_method: 'S256',
   });
-  const stash = JSON.stringify({ state, nonce, verifier, next: safeNext(url.searchParams.get('next')) });
+  if (o.issuer) q.set('nonce', nonce);
+  const stash = JSON.stringify({ state, nonce, verifier, route: o.route, age: url.searchParams.get('age') === '1', next: safeNext(url.searchParams.get('next')) });
   return redirect(`${doc.authorization_endpoint}?${q}`, [setCookie(req, 'rg_oidc', stash, 600)]);
 }
 
-export async function oidcCallback(DB, env, req) {
-  const o = oidcConfig(env);
+const b64json = s => JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0))));
+
+export async function socialCallback(DB, env, req, route) {
+  const o = socialConfig(env, route);
   const url = new URL(req.url);
   const stash = safeJSON(cookies(req).rg_oidc || '', {});
   const clear = setCookie(req, 'rg_oidc', '', 0);
   const code = url.searchParams.get('code');
-  if (!o || !code || !stash.state || url.searchParams.get('state') !== stash.state) return redirect('/signin?failed=1', [clear]);
-  const doc = await discover(o);
-  const tr = await fetch(doc.token_endpoint, {
-    method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
-    body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: `${url.origin}/auth/oidc/callback`, client_id: o.clientId, client_secret: o.secret, code_verifier: stash.verifier }),
-  });
-  if (!tr.ok) { console.error('oidc token', tr.status, await tr.text()); return redirect('/signin?failed=1', [clear]); }
+  const fail = (why = 'failed') => redirect(`/signin?${why}=1&next=${encodeURIComponent(stash.next || '/')}`, [clear]);
+  if (!o || !code || !stash.state || stash.route !== o.route || url.searchParams.get('state') !== stash.state) return fail();
+  const doc = await endpoints(o);
+  const form = { grant_type: 'authorization_code', code, redirect_uri: `${url.origin}/auth/${o.route}/callback`, client_id: o.clientId, code_verifier: stash.verifier };
+  const headers = { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' };
+  if (o.basicAuth) headers.authorization = 'Basic ' + btoa(`${o.clientId}:${o.secret}`); else form.client_secret = o.secret;
+  const tr = await fetch(doc.token_endpoint, { method: 'POST', headers, body: new URLSearchParams(form) });
+  if (!tr.ok) { console.error(o.id, 'token', tr.status, await tr.text()); return fail(); }
   const tokens = await tr.json();
-  // The ID token came straight from the token endpoint over TLS, so its claims can be trusted
-  // without checking the signature (OpenID Connect Core 3.1.3.7). We still check who it's for.
-  let claims = {};
-  try { claims = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(tokens.id_token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0)))); } catch { /* fall back to userinfo */ }
-  if (claims.nonce !== undefined && claims.nonce !== stash.nonce) return redirect('/signin?failed=1', [clear]);
-  if (claims.aud && ![].concat(claims.aud).includes(o.clientId)) return redirect('/signin?failed=1', [clear]);
-  let info = {};
-  if (doc.userinfo_endpoint && tokens.access_token) {
-    const ur = await fetch(doc.userinfo_endpoint, { headers: { authorization: `Bearer ${tokens.access_token}` } });
-    if (ur.ok) info = await ur.json();
+  let who;
+  if (o.issuer) {
+    // The ID token came straight from the token endpoint over TLS, so its claims can be trusted
+    // without checking the signature (OpenID Connect Core 3.1.3.7). We still check who it's for.
+    let claims = {};
+    try { claims = b64json(tokens.id_token.split('.')[1]); } catch { /* fall back to userinfo */ }
+    if (claims.nonce !== undefined && claims.nonce !== stash.nonce) return fail();
+    if (claims.aud && ![].concat(claims.aud).includes(o.clientId)) return fail();
+    let info = {};
+    if (doc.userinfo_endpoint && tokens.access_token) {
+      const ur = await fetch(doc.userinfo_endpoint, { headers: { authorization: `Bearer ${tokens.access_token}` } });
+      if (ur.ok) info = await ur.json();
+    }
+    if (claims.sub && info.sub && claims.sub !== info.sub) return fail();
+    const all = { ...claims, ...info };
+    // Keep what game features will want from SceneSpot: profile, home city and Scenes.
+    who = {
+      sub: String(all.sub || ''), name: all.name || all.preferred_username || null, handle: all.preferred_username || null, picture: all.picture || null,
+      email: all.email && all.email_verified !== false && all.email_verified !== 'false' ? String(all.email) : null,
+      city: all.city || all.locality || all.address?.locality || null, scenes: all.scenes || null,
+    };
+  } else {
+    if (!tokens.access_token) return fail();
+    const ur = await fetch(doc.userinfo_endpoint, { headers: { authorization: `Bearer ${tokens.access_token}`, accept: 'application/json', 'user-agent': 'RookieGamers' } });
+    if (!ur.ok) { console.error(o.id, 'user', ur.status, await ur.text()); return fail(); }
+    who = o.user(await ur.json());
   }
-  const sub = String(info.sub || claims.sub || '');
-  if (!sub || (claims.sub && info.sub && claims.sub !== info.sub)) return redirect('/signin?failed=1', [clear]);
-  const all = { ...claims, ...info };
-  const email = all.email && all.email_verified !== false ? String(all.email).toLowerCase() : null;
-  // Keep what game features will want from SceneSpot: profile, home city and Scenes.
-  const profile = { name: all.name || all.preferred_username || null, picture: all.picture || null, city: all.city || all.locality || all.address?.locality || null, scenes: all.scenes || null };
+  if (!who || !who.sub) return fail();
+  const email = who.email ? String(who.email).toLowerCase() : null;
+  const profile = { name: who.name || null, handle: who.handle || null, picture: who.picture || null };
+  if (who.city !== undefined) Object.assign(profile, { city: who.city, scenes: who.scenes });
   const current = await sessionPlayer(DB, req);
-  const pid = await attachIdentity(DB, { provider: o.id, subject: sub, profile, current, email, name: cleanText(profile.name, 18) || null });
-  return redirect(stash.next || '/', [clear, current === pid ? null : await newSession(DB, req, pid)]);
+  const pid = await attachIdentity(DB, { provider: o.id, subject: String(who.sub), profile, current, email, name: cleanText(who.name, 18) || null, allowNew: !!stash.age, ...referralFrom(req) });
+  if (!pid) return fail('age');
+  return redirect(stash.next || '/', [clear, current === pid ? null : await newSession(DB, req, pid), ...(current ? [] : clearReferral(req))]);
 }

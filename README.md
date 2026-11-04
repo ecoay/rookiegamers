@@ -9,10 +9,11 @@ It runs on Cloudflare: one Worker, one D1 database and one R2 bucket.
 | Part | Where | What it does |
 | --- | --- | --- |
 | Portal pages | `src/pages.js`, `public/site.css` | Home shelf (ranked by playtime per player, new releases first), `/play/<slug>` with the game frame, boards and play-next, profiles at `/u/<id>`, `/hall-of-fame`, `/signin`, `/dev`, `/docs` |
-| SDK | `public/sdk/v1.js` | The `rg` global: game events, player, leaderboards, Hall of Fame, play next, plus safe stubs for saves, invites, store, guilds, ads and wallet. Works in the portal frame, on a game's own site (sign-in popup), and in test mode (`?rg_test=1`) |
+| SDK | `public/sdk/v1.js` | The `rg` global: game events, player, leaderboards, Hall of Fame, play next, sharing and invites, plus safe stubs for saves, invites, store, guilds, ads and wallet. Works in the portal frame, on a game's own site (sign-in popup), and in test mode (`?rg_test=1`) |
 | Portal bridge | `public/portal.js` | The page side of the frame: answers only its own game frame, mints a player token for that one game, opens sign-in in a popup so the game keeps its state |
 | SDK API | `src/api.js` (`/api/v1`) | Events and playtime, scores (browser with limits, or a game's server with its key), boards, Hall of Fame, play next. Bearer tokens only, open to any origin |
-| Sign-in | `src/auth.js` | Email link (Resend) now, and any OpenID Connect provider through `OIDC_*` secrets. SceneSpot becomes the main sign-in by setting those secrets. Every sign-in method is an identity row on one player, so linking SceneSpot later keeps the account |
+| Growth | `src/growth.js` | Share links (`/s/<id>`, with link previews), invite links (`/?via=<player>`), referrals and gems |
+| Sign-in | `src/auth.js` | Email link (Resend), Google, Discord, X, Twitch and GitHub, and any OpenID Connect provider through `OIDC_*` secrets. SceneSpot becomes the main sign-in by setting those secrets. Every sign-in method is an identity row on one player, so linking SceneSpot later keeps the account |
 | Player tokens | `src/tokens.js` | ES256 JWTs (15 minutes, `aud` = game slug). Public keys at `/.well-known/jwks.json` so game servers can check them |
 | Developer API | `src/dev.js` (`/api/dev`) | API keys, create and edit games, upload builds to R2, publishing checks, publish, stats, server keys |
 | MCP server | `src/mcp.js` (`/mcp`) | The developer API as MCP tools, plus the SDK docs and a starter game. One server for Claude Code, Codex, Grok and any other MCP client |
@@ -38,6 +39,7 @@ Secrets (Workers & Pages, rookiegamers, Settings, Variables and Secrets):
 | `RESEND_API_KEY` | Email sign-in links. Verify `rookiegamers.com` in Resend, or change `EMAIL_FROM` |
 | `ADMIN_TOKEN` | The admin API: developer invites, assigning game owners, editing any game |
 | `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | Sign in with SceneSpot (or any OpenID Connect provider). Optional `OIDC_NAME` (button label, default "SceneSpot") and `OIDC_ID` (default `scenespot`). Redirect URI: `https://rookiegamers.com/auth/oidc/callback` |
+| `GOOGLE_`, `DISCORD_`, `X_`, `TWITCH_`, `GITHUB_` + `CLIENT_ID` and `CLIENT_SECRET` | Sign in with, and link, that network. Each one shows up on the sign-in page and the profile once its two secrets are set. Redirect URI: `https://rookiegamers.com/auth/<google\|discord\|x\|twitch\|github>/callback`. X needs a confidential OAuth 2.0 client |
 
 Variables in `wrangler.jsonc`: `SITE_URL` (also the token issuer), `EMAIL_FROM`, `OPEN_DEVELOPERS` (`"1"` lets anyone signed in become a developer; otherwise it takes an invite), and `GAMES_HOST` once `games.rookiegamers.com` routes to this Worker. Until `GAMES_HOST` is set, hosted games are served from `/hosted/<slug>/` in an opaque-origin sandbox.
 
@@ -82,3 +84,5 @@ Use `localhost`, not `127.0.0.1`, in the browser: the SDK only trusts messages f
 - Accounts are 13 and up. Younger players play as guests.
 - The crypto layer is 18+ and opt-in, per player and per game. The coin (Solana) is only a discount: items can be paid in cash, unlocked with ads, or bought for less in coins. Of a coin payment, 30% is burned, 30% goes to the treasury (the liquidity pool) and 40% to the developer. Games with coin off sell for cash and ads, and the developer is paid in cash. The store lands in phase 3; this repo has the per-game switch and the player's 18+ flag.
 - No outside ad code in games. The portal serves ads for every game.
+- The RookieGamers account is a game's only sign-in, wherever the game runs. Publishing blocks hosted builds that ship another sign-in (Google, Firebase Auth, Supabase Auth, Auth0, Clerk and others).
+- Gems reward word of mouth. A friend who signs up through a player's invite or share link and plays for 10 minutes earns that player 100 gems and earns the friend 25 (at most 20 paid referrals a day per player). Each social network a player links earns 50 gems, once. Gems are not money and never convert to coin or cash.

@@ -1,5 +1,5 @@
 import { db, monthKey, prevMonth } from './db.js';
-import { emailVerify, oidcStart, oidcCallback } from './auth.js';
+import { emailVerify, socialStart, socialCallback, NETWORK_IDS } from './auth.js';
 import { jwks } from './tokens.js';
 import { apiV1, apiPortal, apiDev, json, CORS } from './api.js';
 import { mcp } from './mcp.js';
@@ -58,10 +58,12 @@ export default {
       }
       if (path.startsWith('/api/')) return await apiPortal(req, env, DB, url);
       if (path === '/auth/email') return await emailVerify(DB, req);
-      if (path === '/auth/oidc') return await oidcStart(env, req);
-      if (path === '/auth/oidc/callback') return await oidcCallback(DB, env, req);
-
       let m;
+      // /auth/oidc is SceneSpot; /auth/google, /auth/discord and the rest are social networks.
+      if ((m = path.match(/^\/auth\/([a-z]{1,16})(\/callback)?$/)) && (m[1] === 'oidc' || NETWORK_IDS.includes(m[1]))) {
+        return m[2] ? await socialCallback(DB, env, req, m[1]) : await socialStart(env, req, m[1]);
+      }
+
       if ((m = path.match(/^\/hosted\/([a-z0-9-]{1,32})(?:\/(.*))?$/))) {
         if (m[2] === undefined) return Response.redirect(`${url.origin}/hosted/${m[1]}/`, 301);
         const res = await hosted(env, DB, m[1], decodeURIComponent(m[2]));

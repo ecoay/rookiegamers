@@ -19,6 +19,7 @@ export function starterFiles({ slug, title, portal }) {
     <h1>${safeTitle}</h1>
     <p>Drag or use the arrow keys to dodge.</p>
     <button id="play" type="button">Play</button>
+    <button id="share" type="button" hidden>Challenge a friend</button>
     <ol id="board"></ol>
   </div>
   <script src="game.js"></script>
@@ -30,6 +31,7 @@ canvas{display:block;width:100vw;height:100vh}
 #hud{position:fixed;top:12px;left:16px;right:16px;display:flex;justify-content:space-between;font-weight:700;pointer-events:none}
 #menu{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;background:rgba(15,13,22,.82);text-align:center;padding:16px}
 #menu[hidden]{display:none}h1{margin:0;font-size:40px}
+#share{background:rgba(255,255,255,.14)}#share[hidden]{display:none}
 button{border:0;border-radius:999px;padding:12px 28px;font:700 18px system-ui,sans-serif;background:#ff5c39;color:#fff;cursor:pointer}
 ol{margin:12px 0 0;padding:0 0 0 20px;text-align:left;min-width:200px;opacity:.85}
 `;
@@ -63,6 +65,9 @@ async function over() {
   rg.game.gameplayStop();
   $('menu').hidden = false;
   $('play').textContent = 'Play again';
+  const best = score;
+  $('share').hidden = false;
+  $('share').onclick = () => rg.share({ score: best });
   const r = await rg.scores.submit({ score });
   if (!r.ok && r.signin && await rg.user.login()) await rg.scores.submit({ score });
   showBoard();
@@ -101,10 +106,10 @@ function tick(t) {
 
 A RookieGamers game. The SDK reference is at ${portal}/docs (or the \`get_sdk_docs\` MCP tool).
 
-- Keep \`rg.init\`, \`rg.game.loaded\`, \`gameplayStart\`/\`gameplayStop\`, \`rg.scores.submit\` and \`rg.promo.showNext\` wired in.
+- Keep \`rg.init\`, \`rg.game.loaded\`, \`gameplayStart\`/\`gameplayStop\`, \`rg.scores.submit\`, \`rg.share\` and \`rg.promo.showNext\` wired in.
 - Test locally with \`?rg_test=1\` in the URL (fake player, in-memory scores).
 - Publish with the \`upload_files\` and \`publish_game\` MCP tools, or \`node rg.mjs deploy . --game ${slug}\`.
-- No outside ad code, and it must fit a phone screen.
+- No outside ad code and no sign-in of its own (the RookieGamers account is the only login), and it must fit a phone screen.
 `;
   return [
     { path: 'index.html', content: index },

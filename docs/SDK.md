@@ -27,6 +27,7 @@ Add one script tag and you get sign-in, leaderboards, the Hall of Fame and cross
 - Wrap real play in `gameplayStart()` / `gameplayStop()`. The portal uses this to count playtime and XP, and later to keep ads out of play.
 - Guests can always play. Only ask for sign-in when it matters, like saving a score: `if (!await rg.user.get()) await rg.user.login()`.
 - Never put outside ad code in a game. The portal serves ads for every game.
+- The RookieGamers account is the only sign-in. Don't ship your own login or another one (Google, Firebase Auth, Supabase Auth, Auth0, Clerk, Facebook and so on). Use `rg.user.login()`, and `rg.user.token()` if your server needs to know who's playing. This holds wherever your game runs: on the portal, on your own site, or on other portals.
 - Make it fit a phone screen: include `<meta name="viewport" content="width=device-width, initial-scale=1">` and handle touch as well as mouse.
 - Every call returns a Promise and never throws for normal failures. Failures resolve to `{ ok: false, error }`.
 
@@ -86,6 +87,18 @@ At the end of each month, the top 3 on every game's monthly board go into the Ha
 
 `rg.promo.showNext()` shows a "play next" card over your game with another game from the portal, picked from ones the player hasn't tried. Call it at a natural break like a round end or a game over. Resolves to `{ ok, shown, game }`. `rg.promo.next()` gives you the pick without showing anything, if you want to draw your own card; call `rg.promo.go(slug)` when the player taps it.
 
+### Sharing and invites
+
+| Call | What it does |
+| --- | --- |
+| `rg.share({ score, text, room })` | Opens a share sheet with a link to your game: X, WhatsApp, Facebook, Reddit, Telegram, email, copy, and the phone's own share menu. Resolves to `{ ok, url, credited, shared }` |
+| `rg.invite.link({ room })` | Just the link, for your own invite button. Resolves to `{ ok, url, credited }` |
+| `rg.invite.room()` | The room from an invite link the player opened, or `null`. Use it to drop them into their friend's match |
+
+Everything is optional. `score` makes the message and the link preview a challenge ("Sam got 12,400 in Rock Dodge. Can you beat it?"). `text` replaces the message. `room` rides along on the link for multiplayer invites. Call `rg.share()` from a button the player pressed, so the browser allows the share menu.
+
+When the player is signed in, the link credits them. A friend who signs up through it and plays for 10 minutes earns the sharer 100 gems and earns the friend 25. Players also earn 50 gems for each social account they link. Gems are a reward currency on RookieGamers, not money. Your game's stats show its share links, the visits they brought and the sign-ups.
+
 ### Coming later
 
 These exist so you can wire them in now. Until they launch they resolve harmlessly.
@@ -93,7 +106,6 @@ These exist so you can wire them in now. Until they launch they resolve harmless
 | Module | Calls | Until launch |
 | --- | --- | --- |
 | Cloud saves | `rg.data.get(key)`, `rg.data.set(key, value)` | Uses `localStorage` |
-| Invites | `rg.invite.link({ room })` | Returns a link to your game's portal page |
 | Store | `rg.store.buy(sku)`, `rg.store.owned()` | `{ ok: false }` and `[]`. Every item can be bought with cash, unlocked with ads, or bought for less with RookieGamers coins (18+, opt-in). The portal runs all three; the game only asks what the player owns |
 | Guilds | `rg.guild.mine()`, `rg.guild.board()` | `null` and `[]` |
 | Ads | `rg.ads.midgame()`, `rg.ads.rewarded()` | Resolve right away with no ad (`rewarded` gives `{ rewarded: false }`) |
@@ -124,7 +136,7 @@ There are two kinds of game:
 - **Hosted:** upload a folder of static files (an `index.html` at the root plus everything it loads). The portal serves it and frames it on `/play/<slug>`.
 - **Linked:** the game runs on your own site. Give its URL and origins. This is how games with their own servers work.
 
-Publishing runs quick checks first: an `index.html` exists, it loads the SDK, it has a viewport tag, and it carries no outside ad code. Problems block publishing; warnings don't.
+Publishing runs quick checks first: an `index.html` exists, it loads the SDK, it has a viewport tag, it carries no outside ad code, and it has no sign-in of its own. Problems block publishing; warnings don't.
 
 Ways to publish, all with the same powers:
 

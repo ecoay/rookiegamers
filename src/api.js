@@ -3,6 +3,7 @@ import { sessionPlayer, signOut, emailStart, providers } from './auth.js';
 import { signToken, verifyToken, TOKEN_TTL } from './tokens.js';
 import { gameEvent, submitScore, topScores, rankOf, fame, playNext, frontPage, sealIfDue } from './play.js';
 import * as dev from './dev.js';
+import { createShare } from './growth.js';
 
 export const json = (data, status = 200, extra = {}) => {
   const h = new Headers({ 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...extra });
@@ -28,7 +29,7 @@ async function bearerPlayer(DB, env, req, game) {
 export async function mintFor(DB, env, pid, slug) {
   const p = await getPlayer(DB, pid);
   if (!p) return null;
-  const user = publicPlayer(p);
+  const user = { ...publicPlayer(p), gems: p.gems };
   const token = await signToken(DB, env, { sub: pid, aud: slug, name: p.name });
   return { token, exp: Math.floor(now() / 1000) + TOKEN_TTL, user };
 }
@@ -107,6 +108,16 @@ export async function apiV1(req, env, DB, url) {
     return cjson({ game: await playNext(DB, slug, pid) });
   }
 
+  // A share link. With a player token it credits the player; without one it's the plain game link.
+  if (path === '/shares' && method === 'POST') {
+    const b = await readJSON(req);
+    const g = await getGame(DB, String(b.game || ''));
+    if (!g || !g.live) return cjson({ error: 'Unknown game.' }, 404);
+    const pid = await bearerPlayer(DB, env, req, g.slug);
+    const r = await createShare(DB, dev.siteURL(env), g, pid, b);
+    return cjson(r, r.status || 200);
+  }
+
   if ((m = path.match(/^\/players\/(p[a-f0-9]{20})$/)) && method === 'GET') {
     const p = await getPlayer(DB, m[1]);
     return p ? cjson({ player: publicPlayer(p) }) : cjson({ error: 'Unknown player.' }, 404);
@@ -125,7 +136,15 @@ export async function apiPortal(req, env, DB, url) {
 
   if (path === '/api/me' && method === 'GET') {
     const p = pid && await getPlayer(DB, pid);
-    return json({ me: p ? { ...publicPlayer(p), email: p.email, developer: await dev.isDeveloper(DB, pid) } : null, providers: providers(env) });
+    return json({ me: p ? { ...publicPlayer(p), gems: p.gems, email: p.email, developer: await dev.isDeveloper(DB, pid) } : null, providers: providers(env) });
+  }
+  // The portal's own share button and the share sheet for framed games.
+  if (path === '/api/share' && method === 'POST') {
+    const b = await readJSON(req);
+    const g = await getGame(DB, String(b.game || ''));
+    if (!g || !g.live) return json({ error: 'Unknown game.' }, 404);
+    const r = await createShare(DB, dev.siteURL(env), g, pid, b);
+    return json(r, r.status || 200);
   }
   if (path === '/api/auth/email' && method === 'POST') {
     const r = await emailStart(DB, env, req, await readJSON(req));

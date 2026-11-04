@@ -1,5 +1,6 @@
 import { getGame, getPlayer, publicPlayer, gameView, monthKey, monthLabel, levelFor, safeJSON } from './db.js';
-import { sessionPlayer, providers, safeNext } from './auth.js';
+import { sessionPlayer, providers, safeNext, setCookie } from './auth.js';
+import { getShare, isBot, countShareClick, validVia, referralStats, gemHistory, GEMS, VIA_COOKIE, SHARE_COOKIE, VIA_DAYS, REFERRAL_PLAY_MS } from './growth.js';
 import { frontPage, topScores, fame, sealIfDue } from './play.js';
 import { isDeveloper, myGames, listKeys, siteURL } from './dev.js';
 import { mintFor } from './api.js';
@@ -10,16 +11,22 @@ const html = (body, status = 200, headers = {}) => new Response(body, { status, 
 // Inline JSON safely inside <script>.
 const data = v => JSON.stringify(v).replace(/</g, '\\u003c');
 
-function layout({ title, desc, me, active, body, url, scripts = '' }) {
+const GEM = '<svg class="gem" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1h8l4 5-8 9-8-9z" fill="currentColor"/><path d="M0 6h16M4 1l4 14M12 1 8 15" stroke="rgba(0,0,0,.25)" fill="none"/></svg>';
+const gemCount = n => `<span class="gems" title="Gems">${GEM}${Number(n || 0).toLocaleString('en-US')}</span>`;
+
+function layout({ title, desc, me, active, body, url, scripts = '', og = {} }) {
   const t = title ? `${title} · RookieGamers` : 'RookieGamers · free web games, one account';
+  const ogTitle = og.title || t, ogDesc = og.desc || desc || 'Play free web games from indie developers, with one account, one level and one Hall of Fame across every game.';
   const nav = [['/', 'Games'], ['/hall-of-fame', 'Hall of Fame'], ['/dev', 'Publish'], ['/docs', 'SDK']];
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(t)}</title><meta name="description" content="${esc(desc || 'Play free web games from indie developers, with one account, one level and one Hall of Fame across every game.')}">
-<meta property="og:title" content="${esc(t)}"><meta property="og:type" content="website">${url ? `<link rel="canonical" href="${esc(url)}">` : ''}
+<meta property="og:site_name" content="RookieGamers"><meta property="og:title" content="${esc(ogTitle)}"><meta property="og:description" content="${esc(ogDesc)}"><meta property="og:type" content="website">
+${url ? `<meta property="og:url" content="${esc(url)}"><link rel="canonical" href="${esc(url)}">` : ''}${og.image ? `<meta property="og:image" content="${esc(og.image)}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="${esc(og.image)}">` : '<meta name="twitter:card" content="summary">'}
+<meta name="twitter:title" content="${esc(ogTitle)}"><meta name="twitter:description" content="${esc(ogDesc)}">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/site.css"></head><body>
 <header class="top"><div class="wrap"><a class="logo" href="/"><b>RG</b>RookieGamers</a>
 <nav class="main">${nav.map(([h, l]) => `<a href="${h}"${active === h ? ' aria-current="page"' : ''}>${l}</a>`).join('')}</nav>
-${me ? `<a class="me" href="/u/${esc(me.id)}"><img src="${esc(me.avatar)}" alt="">${esc(me.name)} <span class="muted">Lv ${me.level}</span></a>` : `<a class="btn small" href="/signin?next=${encodeURIComponent(active || '/')}" id="signinLink">Sign in</a>`}
+${me ? `<a class="me" href="/u/${esc(me.id)}"><img src="${esc(me.avatar)}" alt="">${esc(me.name)} <span class="muted">Lv ${me.level}</span>${gemCount(me.gems)}</a>` : `<a class="btn small" href="/signin?next=${encodeURIComponent(active || '/')}" id="signinLink">Sign in</a>`}
 </div></header><main><div class="wrap">${body}</div></main>
 <footer class="foot"><div class="wrap"><span>RookieGamers</span><a href="/docs">SDK docs</a><a href="/dev">Publish a game</a><a href="/hall-of-fame">Hall of Fame</a><span>Accounts are for players 13 and up.</span></div></footer>
 ${scripts}</body></html>`;
@@ -28,7 +35,7 @@ ${scripts}</body></html>`;
 async function viewer(DB, req) {
   const pid = await sessionPlayer(DB, req);
   const p = pid && await getPlayer(DB, pid);
-  return p ? publicPlayer(p) : null;
+  return p ? { ...publicPlayer(p), gems: p.gems } : null;
 }
 
 const initial = s => esc((s || '?').trim().charAt(0).toUpperCase());
@@ -72,6 +79,18 @@ function frameFor(env, g, url) {
   return { src: `${url.origin}/hosted/${g.slug}/`, origins: ['null'], sandbox: 'allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms allow-pointer-lock' };
 }
 
+const coverURL = g => (g.cover && /^https:\/\//.test(g.cover) ? g.cover : null);
+
+// The share sheet on /play pages. portal.js fills in the link and opens it, for the Share button
+// and for rg.share() calls from the game.
+function shareDialog(me) {
+  return `<dialog class="signin share" id="shareDlg"><h3 style="margin-top:0">Share this game</h3><p class="muted" id="shareText"></p>
+<div class="nets" id="shareNets"></div>
+<div class="copy"><input id="shareUrl" readonly aria-label="Share link"><button class="btn small" id="shareCopy" type="button">Copy</button></div>
+<p class="muted small">${me ? `Friends who sign up through your link and play for ${REFERRAL_PLAY_MS / 60000} minutes earn you ${GEMS.referrer} gems, and they get ${GEMS.friend}.` : 'Sign in first and your link earns you gems when friends join.'}</p>
+<div style="display:flex;justify-content:flex-end"><button class="btn ghost small" id="shareClose" type="button">Done</button></div></dialog>`;
+}
+
 async function play(DB, req, env, url, slug) {
   const g = await getGame(DB, slug);
   const me = await viewer(DB, req);
@@ -81,21 +100,50 @@ async function play(DB, req, env, url, slug) {
   const ref = /^[a-z0-9-]{1,32}$/.test(url.searchParams.get('ref') || '') ? url.searchParams.get('ref') : null;
   const src = new URL(frame.src);
   if (ref) src.searchParams.set('rg_ref', ref);
+  // A multiplayer invite: the game reads the room with rg.invite.room().
+  const room = /^[A-Za-z0-9_-]{1,40}$/.test(url.searchParams.get('room') || '') ? url.searchParams.get('room') : null;
+  if (room) src.searchParams.set('rg_room', room);
   const [monthly, alltime, hall, others] = await Promise.all([topScores(DB, g, monthKey(), 10), topScores(DB, g, 'all', 10), fame(DB, { game: g.slug, limit: 9 }), frontPage(DB)]);
   const more = others.filter(o => o.slug !== g.slug).slice(0, 4);
   const v = gameView(g);
   const body = `<div class="play"><div><div class="stage"><iframe id="game" src="${esc(src.href)}" title="${esc(g.title)}" sandbox="${frame.sandbox}" allow="autoplay; fullscreen; gamepad; clipboard-write; screen-wake-lock" allowfullscreen></iframe></div>
-<div class="stagebar"><div><h1>${esc(g.title)}</h1><span class="muted">by ${esc(g.developer)}</span></div><button class="btn ghost small" id="fs" type="button">Full screen</button></div>
+<div class="stagebar"><div><h1>${esc(g.title)}</h1><span class="muted">by ${esc(g.developer)}</span></div><div class="acts"><button class="btn small" id="shareBtn" type="button">Share</button><button class="btn ghost small" id="fs" type="button">Full screen</button></div></div>
 <p class="muted">${esc(g.blurb)}</p></div>
 <aside class="side"><div class="panel"><h3><span>${esc(g.score_label)}</span><span class="tabs"><button type="button" data-b="m" aria-pressed="true">${esc(monthLabel(monthKey()))}</button><button type="button" data-b="a" aria-pressed="false">All time</button></span></h3>
 <div id="bm">${boardList(monthly, g.score_label)}</div><div id="ba" hidden>${boardList(alltime, g.score_label)}</div></div>
 <div class="panel"><h3>Hall of Fame</h3>${hall.length ? `<ol class="board">${hall.map(h => `<li class="top${h.rank}"><span class="n">${h.rank}</span><span class="who"><a href="/u/${esc(h.player.id)}">${esc(h.player.name)}</a><small>${esc(h.monthLabel)}</small></span><span class="s">${h.score.toLocaleString('en-US')}</span></li>`).join('')}</ol>` : '<p class="muted">At the end of each month the top 3 are kept here forever and earn a title shown across RookieGamers.</p>'}</div>
 ${more.length ? `<div class="panel"><h3>Play next</h3><div class="shelf" style="grid-template-columns:repeat(2,minmax(0,1fr))">${more.map(card).join('')}</div></div>` : ''}</aside></div>
 <dialog class="signin" id="signinDlg"><h3 style="margin-top:0">Sign in to save your scores</h3><p class="muted">One RookieGamers account works in every game.</p>
-<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="dlgGo" type="button">Sign in</button><button class="btn ghost" id="dlgNo" type="button">Keep playing as a guest</button></div></dialog>`;
-  const boot = { game: v.slug, title: v.title, origins: frame.origins, ref };
+<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="dlgGo" type="button">Sign in</button><button class="btn ghost" id="dlgNo" type="button">Keep playing as a guest</button></div></dialog>
+${shareDialog(me)}`;
+  const boot = { game: v.slug, title: v.title, origins: frame.origins, ref, signedIn: !!me };
   return html(layout({ title: g.title, desc: g.blurb, me, active: '/play/' + g.slug, body, url: siteURL(env) + '/play/' + g.slug,
+    og: { title: `Play ${g.title} free on RookieGamers`, image: coverURL(g) },
     scripts: `<script>window.RG_PLAY=${data(boot)}</script><script src="/portal.js"></script>` }));
+}
+
+// /s/<id>: a shared link. Link previews read the tags; people are sent on to the game, and
+// remembered as the sharer's referral for 30 days.
+async function sharePage(DB, req, env, id) {
+  const sh = await getShare(DB, id);
+  const g = sh && await getGame(DB, sh.game);
+  const me = await viewer(DB, req);
+  if (!sh || !g || !g.live) return notFound(me, 'That link has expired.');
+  const who = await getPlayer(DB, sh.player_id);
+  const name = who ? who.name : 'A friend';
+  const title = sh.score ? `${name} got ${sh.score.toLocaleString('en-US')} in ${g.title}. Can you beat it?` : `${name} invited you to play ${g.title}`;
+  const to = `/play/${g.slug}${sh.room ? '?room=' + encodeURIComponent(sh.room) : ''}`;
+  const ua = req.headers.get('user-agent') || '';
+  const cookies = [];
+  if (!isBot(ua) && (!me || me.id !== sh.player_id)) {
+    await countShareClick(DB, sh);
+    if (!me) cookies.push(setCookie(req, VIA_COOKIE, sh.player_id, VIA_DAYS * 86400), setCookie(req, SHARE_COOKIE, sh.id, VIA_DAYS * 86400));
+  }
+  const body = `<section class="hero"><h1>${esc(title)}</h1><p class="lede">${esc(sh.text || g.blurb)}</p><a class="btn" href="${esc(to)}">Play ${esc(g.title)}</a></section>`;
+  const res = html(layout({ title, desc: g.blurb, me, body, url: siteURL(env) + '/s/' + sh.id, og: { title, desc: sh.text || g.blurb, image: coverURL(g) },
+    scripts: `<script>location.replace(${data(to)})</script>` }));
+  for (const c of cookies) res.headers.append('set-cookie', c);
+  return res;
 }
 
 async function hallOfFame(DB, req, env) {
@@ -107,6 +155,25 @@ async function hallOfFame(DB, req, env) {
 ${Object.keys(months).length ? Object.entries(months).map(([m, games]) => `<section class="fame-month"><h2>${esc(monthLabel(m))}</h2><div class="fame-grid">${Object.entries(games).map(([slug, g]) => `<div class="panel"><h3><a href="/play/${esc(slug)}">${esc(g.title)}</a></h3>${boardList(g.rows, 'champions')}</div>`).join('')}</div></section>`).join('')
     : `<div class="empty">The first champions are crowned on ${esc(monthLabel(monthKey()))}'s last day. Go set a score.</div>`}`;
   return html(layout({ title: 'Hall of Fame', me, active: '/hall-of-fame', body, url: siteURL(env) + '/hall-of-fame' }));
+}
+
+const NET_NAMES = { scenespot: 'SceneSpot', google: 'Google', discord: 'Discord', x: 'X', twitch: 'Twitch', github: 'GitHub' };
+const REASONS = { link: r => `Linked ${NET_NAMES[r.ref] || r.ref}`, referral: () => 'A friend you invited played', welcome: () => 'Joined through a friend' };
+
+// Gems, the invite link, referrals and linked networks, on your own profile.
+async function myGrowth(DB, env, p) {
+  const prov = providers(env).social;
+  const [refs, history, linked] = await Promise.all([referralStats(DB, p.id), gemHistory(DB, p.id, 10),
+    DB.prepare('SELECT provider FROM identities WHERE player_id = ?').bind(p.id).all()]);
+  const have = new Set(linked.results.map(r => r.provider));
+  const invite = `${siteURL(env)}/?via=${p.id}`;
+  return `<h2>Gems ${gemCount(p.gems)}</h2>
+<p class="lede">Earn gems by bringing friends and linking your accounts. Gems unlock rewards across RookieGamers.</p>
+<div class="fame-grid"><div class="panel"><h3>Invite friends</h3><p class="muted">When a friend signs up through your link and plays for ${REFERRAL_PLAY_MS / 60000} minutes, you get ${GEMS.referrer} gems and they get ${GEMS.friend}.</p>
+<div class="copy"><input id="inviteUrl" readonly value="${esc(invite)}" aria-label="Your invite link"><button class="btn small" id="inviteCopy" type="button">Copy</button><button class="btn ghost small" id="inviteShare" type="button" hidden>Share</button></div>
+<p class="muted small">${refs.joined} joined · ${refs.played} played and paid out</p></div>
+<div class="panel"><h3>Linked accounts</h3>${prov.length ? `<ul class="links">${prov.map(x => `<li><span>${esc(x.name)}</span>${have.has(x.id) ? '<span class="ok">Linked</span>' : `<a class="btn small" href="/auth/${esc(x.route)}?next=/u/${esc(p.id)}">Link, +${GEMS.link} ${GEM}</a>`}</li>`).join('')}</ul>` : '<p class="muted">Linking social accounts opens soon.</p>'}</div>
+${history.length ? `<div class="panel"><h3>Recent gems</h3><ul class="links">${history.map(h => `<li><span>${esc((REASONS[h.reason] || (() => h.reason))(h))}<br><span class="muted small">${new Date(h.at).toISOString().slice(0, 10)}</span></span><span class="gems">+${h.amount}</span></li>`).join('')}</ul></div>` : ''}</div>`;
 }
 
 async function profilePage(DB, req, env, id) {
@@ -122,16 +189,19 @@ async function profilePage(DB, req, env, id) {
     DB.prepare('SELECT title FROM titles WHERE player_id = ? ORDER BY at DESC').bind(id).all(),
   ]);
   const mine = me && me.id === id;
+  const growth = mine ? await myGrowth(DB, env, p) : '';
   const body = `<div class="prof"><img src="${esc(pub.avatar)}" alt=""><div><h1 style="margin:0">${esc(pub.name)}</h1>${pub.title ? `<div style="color:var(--violet);font-weight:600">${esc(pub.title)}</div>` : ''}
 <div class="muted">Level ${lv} · ${pub.xp.toLocaleString('en-US')} XP</div><div class="xp" style="margin-top:6px"><i style="width:${Math.min(100, Math.round((pub.xp - floor) / Math.max(1, next - floor) * 100))}%"></i></div></div></div>
 ${mine ? `<h2>Your profile</h2><form class="form" id="profForm"><input name="name" maxlength="18" value="${esc(pub.name)}" aria-label="Display name">
 ${titles.results.length ? `<select name="title" style="padding:10px;border-radius:12px;background:var(--panel2);color:var(--text);border:1px solid var(--line)"><option value="">No title</option>${titles.results.map(t => `<option${t.title === pub.title ? ' selected' : ''}>${esc(t.title)}</option>`).join('')}</select>` : ''}
-<div style="display:flex;gap:8px"><button class="btn" type="submit">Save</button><button class="btn ghost" type="button" id="signOut">Sign out</button></div><div id="profMsg"></div></form>` : ''}
+<div style="display:flex;gap:8px"><button class="btn" type="submit">Save</button><button class="btn ghost" type="button" id="signOut">Sign out</button></div><div id="profMsg"></div></form>${growth}` : ''}
 <h2>Games played</h2>${games.results.length ? `<table class="t"><tr><th>Game</th><th>Best</th><th>Played</th></tr>${games.results.map(r => `<tr><td><a href="/play/${esc(r.slug)}">${esc(r.title)}</a></td><td>${r.best == null ? '<span class="muted">-</span>' : `${r.best.toLocaleString('en-US')} <span class="muted">${esc(r.score_label.toLowerCase())}</span>`}</td><td>${Math.max(1, Math.round(r.ms / 60000))} min</td></tr>`).join('')}</table>` : '<p class="muted">No games yet.</p>'}
 ${titles.results.length ? `<h2>Titles</h2><ul>${titles.results.map(t => `<li>${esc(t.title)}</li>`).join('')}</ul>` : ''}`;
   const script = mine ? `<script>
 document.getElementById('profForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);const r=await fetch('/api/me',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:f.get('name'),title:f.has('title')?f.get('title'):undefined})});document.getElementById('profMsg').innerHTML=r.ok?'<div class="note ok">Saved.</div>':'<div class="note err">Couldn\\'t save.</div>';if(r.ok)setTimeout(()=>location.reload(),500)};
 document.getElementById('signOut').onclick=async()=>{await fetch('/api/auth/signout',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});location.href='/'};
+const ic=document.getElementById('inviteCopy');if(ic)ic.onclick=async()=>{const i=document.getElementById('inviteUrl');i.select();try{await navigator.clipboard.writeText(i.value)}catch(e){document.execCommand('copy')}ic.textContent='Copied'};
+const is=document.getElementById('inviteShare');if(is&&navigator.share)is.hidden=false;if(is)is.onclick=()=>navigator.share({title:'RookieGamers',text:'Play free games with me on RookieGamers.',url:document.getElementById('inviteUrl').value}).catch(()=>{});
 </script>` : '';
   return html(layout({ title: pub.name, me, body, scripts: script }));
 }
@@ -141,16 +211,21 @@ function signinPage(env, me, url) {
   const next = safeNext(url.searchParams.get('next'));
   const popup = url.searchParams.get('popup') === '1';
   const msg = url.searchParams.has('expired') ? '<div class="note err">That link expired or was already used. Send a new one.</div>'
+    : url.searchParams.has('age') ? '<div class="note err">Tick "I\'m 13 or older" first, then pick how to sign in.</div>'
     : url.searchParams.has('failed') ? '<div class="note err">Sign-in didn\'t go through. Try again.</div>' : '';
-  const body = `<h1>Sign in</h1><p class="lede">One account for every game on RookieGamers: your level, scores and titles follow you everywhere.</p>${msg}
+  const after = popup ? '/auth/done' : next;
+  const body = `<h1>Sign in</h1><p class="lede">One account for every game on RookieGamers: your level, scores, titles and gems follow you everywhere.</p>${msg}
 ${me ? `<div class="note ok">You're signed in as ${esc(me.name)}. <a href="${esc(next)}">Continue</a></div>` : ''}
-<div class="form">${p.oidc ? `<a class="btn" href="/auth/oidc?next=${encodeURIComponent(next)}">Sign in with ${esc(p.oidc.name)}</a><div class="muted" style="text-align:center">or</div>` : ''}
+<div class="form"><label class="check"><input type="checkbox" id="age"> I'm 13 or older. Under 13? You can still play every game as a guest.</label>
+${p.social.length ? `<div class="socials">${p.social.map(x => `<a class="btn ghost social" data-net="${esc(x.id)}" href="/auth/${esc(x.route)}?next=${encodeURIComponent(after)}">Continue with ${esc(x.name)}</a>`).join('')}</div>${p.email ? '<div class="muted" style="text-align:center">or</div>' : ''}` : ''}
 ${p.email ? `<form class="form" id="emailForm"><input type="email" name="email" required placeholder="you@example.com" autocomplete="email" aria-label="Email">
-<label class="check"><input type="checkbox" name="age" required> I'm 13 or older. Under 13? You can still play every game as a guest.</label>
-<button class="btn" type="submit">Email me a sign-in link</button><div id="emailMsg"></div></form>` : (p.oidc ? '' : '<div class="note">Sign-in isn\'t switched on yet. You can still play every game as a guest.</div>')}</div>`;
+<button class="btn" type="submit">Email me a sign-in link</button><div id="emailMsg"></div></form>` : (p.social.length ? '' : '<div class="note">Sign-in isn\'t switched on yet. You can still play every game as a guest.</div>')}
+<p class="muted small">Every social account you sign in with or link earns you ${GEMS.link} gems, once.</p></div>`;
   const script = `<script>
+const age=document.getElementById('age');
+document.querySelectorAll('a.social').forEach(a=>a.onclick=e=>{if(age.checked){a.href+=(a.href.includes('?')?'&':'?')+'age=1'}});
 const f=document.getElementById('emailForm');if(f)f.onsubmit=async e=>{e.preventDefault();const d=new FormData(f);const b=f.querySelector('button');b.disabled=true;
-const r=await fetch('/api/auth/email',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:d.get('email'),age:d.get('age')==='on',next:${data(popup ? '/auth/done' : next)}})});const j=await r.json().catch(()=>({}));b.disabled=false;
+const r=await fetch('/api/auth/email',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:d.get('email'),age:age.checked,next:${data(after)}})});const j=await r.json().catch(()=>({}));b.disabled=false;
 document.getElementById('emailMsg').innerHTML=r.ok?'<div class="note ok">Check your inbox for a sign-in link. '+(j.devLink?'<a href="'+j.devLink+'" id="devLink">Dev sign-in link</a>':'')+'</div>':'<div class="note err"></div>';if(!r.ok)document.querySelector('#emailMsg .err').textContent=j.error||'Something went wrong.'};
 </script>`;
   return html(layout({ title: 'Sign in', me, body, scripts: script }));
@@ -268,8 +343,17 @@ function notFound(me, msg = 'Nothing here.') {
 }
 
 export async function page(path, url, env, DB, req) {
+  const res = await route(path, url, env, DB, req);
+  // An invite link (?via=<player>) is remembered for 30 days, for visitors who aren't signed in.
+  const via = validVia(url.searchParams.get('via'));
+  if (res && via && !isBot(req.headers.get('user-agent')) && !await sessionPlayer(DB, req)) res.headers.append('set-cookie', setCookie(req, VIA_COOKIE, via, VIA_DAYS * 86400));
+  return res;
+}
+
+async function route(path, url, env, DB, req) {
   let m;
   if (path === '/') return home(DB, req, env);
+  if ((m = path.match(/^\/s\/(s[a-f0-9]{12})$/))) return sharePage(DB, req, env, m[1]);
   if ((m = path.match(/^\/play\/([a-z0-9-]{1,32})\/?$/))) return play(DB, req, env, url, m[1]);
   if (path === '/hall-of-fame') return hallOfFame(DB, req, env);
   if ((m = path.match(/^\/u\/(p[a-f0-9]{20})$/))) return profilePage(DB, req, env, m[1]);

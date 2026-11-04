@@ -173,6 +173,22 @@ export async function listBuilds(DB, pid, slug, admin = false) {
 
 // Checks that run before a build goes live. They catch the common mistakes an agent or a person
 // makes: no index.html, no SDK, or ad code from outside the portal.
+// Sign-in SDKs a game can't ship on RookieGamers. Matched on how they load or sign in, so a game
+// can still use, say, Firebase or Supabase for data.
+const OTHER_LOGINS = [
+  ['Google Sign-In', /accounts\.google\.com\/gsi\/client|apis\.google\.com\/js\/platform\.js|google\.accounts\.id\.initialize/],
+  ['Firebase Auth', /firebase-auth(?:-compat)?\.js|["']firebase\/auth["']|\bsignInWithPopup\b|\bsignInWithRedirect\b|\bsignInWithEmailAndPassword\b/],
+  ['Supabase Auth', /\.auth\.signIn(?:WithOAuth|WithPassword|WithOtp)?\(/],
+  ['Auth0', /cdn\.auth0\.com|auth0-spa-js|\bcreateAuth0Client\b/],
+  ['Clerk', /clerk\.browser\.js|@clerk\/clerk-js|\bClerk\.load\(/],
+  ['Sign in with Apple', /appleid\.cdn-apple\.com|AppleID\.auth\.init/],
+  ['Facebook Login', /connect\.facebook\.net\/[^"']*\/sdk\.js|\bFB\.login\(/],
+  ['Discord login', /discord\.com\/(?:api\/)?oauth2\/authorize/],
+  ['Twitch login', /id\.twitch\.tv\/oauth2\/authorize/],
+  ['Magic', /\bnew Magic\(|auth\.magic\.link/],
+  ['Privy', /@privy-io\/|auth\.privy\.io/],
+];
+
 export async function checkBuild(env, slug, version) {
   const problems = [], warnings = [];
   const index = await env.GAMES.get(`${slug}/${version}/index.html`);
@@ -181,6 +197,15 @@ export async function checkBuild(env, slug, version) {
   if (!/\/sdk\/v1\.js/.test(html)) warnings.push('index.html doesn\'t load the SDK (/sdk/v1.js). Sign-in, scores and "play next" won\'t work.');
   if (!/<meta[^>]+name=["']viewport/i.test(html)) warnings.push('No viewport meta tag, so the game may not fit phone screens.');
   if (/googlesyndication|adsbygoogle|doubleclick\.net|imasdk\.googleapis|adinplay|gamemonetize|gamedistribution/i.test(html)) problems.push('The build includes outside ad code. The portal serves ads for every game, so remove it.');
+  // The RookieGamers account is the only sign-in on RookieGamers. Look through the page and its scripts.
+  const code = [html];
+  const listed = await env.GAMES.list({ prefix: `${slug}/${version}/`, limit: 1000 });
+  for (const o of listed.objects.filter(o => /\.(m?js|html?)$/i.test(o.key) && !o.key.endsWith('/index.html') && o.size < 4e6).slice(0, 60)) {
+    const f = await env.GAMES.get(o.key);
+    if (f) code.push(await f.text());
+  }
+  const login = OTHER_LOGINS.filter(([, re]) => code.some(c => re.test(c))).map(([name]) => name);
+  if (login.length) problems.push(`The build has its own sign-in (${login.join(', ')}). On RookieGamers, players sign in with their RookieGamers account only: use rg.user.login() and rg.user.token(), and remove the other sign-in.`);
   return { ok: !problems.length, problems, warnings };
 }
 

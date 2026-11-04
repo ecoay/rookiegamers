@@ -86,3 +86,20 @@ dialog.signin::backdrop{background:rgba(0,0,0,.6)}
 @media (max-width:900px){.play{grid-template-columns:1fr}.stage{aspect-ratio:auto;height:calc(100svh - 170px)}}
 @media (max-width:560px){nav.main{display:none}h2{font-size:20px}.shelf{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.card .body{padding:10px}.card h3{font-size:15px}.card p{font-size:13px}}
 .side .pill{display:none}
+.gems{display:inline-flex;align-items:center;gap:4px;color:#7fe3ff;font-weight:700;font-variant-numeric:tabular-nums}
+.gem{width:14px;height:14px;display:inline-block;vertical-align:-2px}
+h2 .gems{font-size:18px;margin-left:8px}h2 .gem{width:18px;height:18px}
+.acts{display:flex;gap:8px;flex-wrap:wrap}
+.small{font-size:13px}
+.copy{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0}
+.copy input{flex:1 1 180px;min-width:0;padding:9px 12px;font-size:14px}
+.nets{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin:12px 0}
+.nets a,.nets button{display:flex;align-items:center;justify-content:center;border:0;border-radius:12px;padding:10px;background:var(--panel2);color:var(--text);font:600 14px system-ui,sans-serif;text-decoration:none;cursor:pointer}
+.nets a:hover,.nets button:hover{background:var(--line)}
+.socials{display:flex;flex-direction:column;gap:8px}
+ul.links{list-style:none;margin:0;padding:0}
+ul.links li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
+ul.links li:last-child{border-bottom:0}
+ul.links .ok{color:var(--good);font-weight:600;font-size:14px}
+dialog.share{width:min(460px,calc(100vw - 32px))}
+@media (max-width:560px){.me .muted,.me .gems{display:none}}

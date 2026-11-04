@@ -1,4 +1,5 @@
 import { now, newId, monthKey, prevMonth, monthLabel, DAY, liveGames, gameView } from './db.js';
+import { settleReferral, shareStats } from './growth.js';
 
 // Plays, leaderboards, the Hall of Fame and "play next".
 
@@ -31,7 +32,7 @@ export async function gameEvent(DB, game, { type, play, ref, playerId }) {
     const add = Math.max(0, Math.min(t - row.last_at, 5 * 60 * 1000, MAX_PLAY_MS - row.ms));
     await DB.prepare('UPDATE plays SET ms = ms + ?, last_at = ? WHERE id = ?').bind(add, t, row.id).run();
     const pid = playerId || row.player_id;
-    if (pid && add > 0) await addXP(DB, pid, Math.floor(add / 60000 * XP_PER_MINUTE));
+    if (pid && add > 0) { await addXP(DB, pid, Math.floor(add / 60000 * XP_PER_MINUTE)); await settleReferral(DB, pid); }
     return { play: row.id, ms: row.ms + add };
   }
   return { error: 'Unknown event.' };
@@ -160,12 +161,14 @@ export async function frontPage(DB) {
 
 export async function gameStats(DB, slug, days = 30) {
   const since = now() - days * DAY;
-  const [totals, refs, daily, returning] = await Promise.all([
+  const [totals, refs, daily, returning, shared] = await Promise.all([
     DB.prepare('SELECT COUNT(*) AS plays, COUNT(DISTINCT player_id) AS players, COALESCE(SUM(ms), 0) AS ms FROM plays WHERE game = ? AND started_at > ?').bind(slug, since).first(),
     DB.prepare('SELECT ref, COUNT(*) AS plays FROM plays WHERE game = ? AND started_at > ? AND ref IS NOT NULL GROUP BY ref ORDER BY plays DESC LIMIT 10').bind(slug, since).all(),
     DB.prepare(`SELECT strftime('%Y-%m-%d', started_at / 1000, 'unixepoch') AS day, COUNT(*) AS plays, COALESCE(SUM(ms), 0) AS ms FROM plays WHERE game = ? AND started_at > ? GROUP BY day ORDER BY day`).bind(slug, since).all(),
     DB.prepare(`SELECT COUNT(*) AS n FROM (SELECT player_id FROM plays WHERE game = ? AND started_at > ? AND player_id IS NOT NULL
       GROUP BY player_id HAVING COUNT(DISTINCT strftime('%Y-%m-%d', started_at / 1000, 'unixepoch')) > 1)`).bind(slug, since).first(),
+    shareStats(DB, slug, since),
   ]);
-  return { days, plays: totals.plays, signedInPlayers: totals.players, returningPlayers: returning.n, playtimeMinutes: Math.round(totals.ms / 60000), referrers: refs.results, daily: daily.results };
+  return { days, plays: totals.plays, signedInPlayers: totals.players, returningPlayers: returning.n, playtimeMinutes: Math.round(totals.ms / 60000), referrers: refs.results,
+    shares: { links: shared.shares, visits: shared.clicks, signups: shared.signups }, daily: daily.results };
 }

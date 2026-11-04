@@ -22,6 +22,8 @@ RookieGamers is a web game portal where every game shares one player account, le
 ## Rules
 
 - No outside ad code (AdSense, GameDistribution and the like). The portal serves ads for every game.
+- No sign-in of its own (Google, Firebase Auth, Supabase Auth, Auth0, Clerk...). The RookieGamers account is the only login: use `rg.user.login()` and `rg.user.token()`.
+- Give players a reason to share: call `rg.share({ score })` from a button after a good run. Friends who join through it earn the player gems.
 - The game must work on phones: a viewport meta tag, touch controls, and no fixed widths bigger than the screen.
 - Never put a server key (`rgs_...`) or API key (`rgk_...`) in browser code.
 - Games with their own server should report scores from the server. See "Games with a server" in the docs and use `create_server_key`.

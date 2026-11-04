@@ -12,7 +12,7 @@ const PROTOCOLS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 const MAX_UPLOAD_CALL = 20 * 1024 * 1024;
 
 const INSTRUCTIONS = `RookieGamers is a web game portal. Every game shares one player account, leaderboards, a Hall of Fame and "play next" cross-promotion through the RookieGamers SDK (one script tag, global \`rg\`). AI-built games are welcome.
-Typical flow: get_sdk_docs, then scaffold_game (or add the SDK to an existing game), test locally with ?rg_test=1, then create_game, upload_files and publish_game. Publishing checks the build for index.html, the SDK, a viewport tag and no outside ad code.`;
+Typical flow: get_sdk_docs, then scaffold_game (or add the SDK to an existing game), test locally with ?rg_test=1, then create_game, upload_files and publish_game. Publishing checks the build for index.html, the SDK, a viewport tag, no outside ad code and no sign-in of its own (the RookieGamers account is the only login).`;
 
 const str = (description, extra = {}) => ({ type: 'string', description, ...extra });
 const SLUG = str('The game\'s slug: lowercase letters, numbers and dashes, like "sky-harvest".');

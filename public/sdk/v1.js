@@ -90,7 +90,7 @@
 
   /* ---------- game events ---------- */
 
-  async function event(type) {
+  async function send(type) {
     await ready();
     if (S.mode === 'portal') window.parent.postMessage({ rg: 1, type: 'game', data: { event: type } }, PORTAL);
     if (S.mode === 'test') return ok();
@@ -98,8 +98,19 @@
     if (r.ok && r.play) S.play = r.play;
     return r;
   }
+  // Every play starts with 'loaded'. Later events wait for its play id, so a game that
+  // calls gameplayStart() before loaded() has answered (or never calls loaded()) still counts.
+  function opened() {
+    if (!S.opening) S.opening = send('loaded').then((r) => { if (!r.ok) S.opening = null; return r; });
+    return S.opening;
+  }
+  async function event(type) {
+    if (type === 'loaded') return opened();
+    await opened();
+    return send(type);
+  }
   const game = {
-    loaded() { return S.play ? Promise.resolve(ok()) : event('loaded'); },
+    loaded() { return opened(); },
     gameplayStart() {
       if (S.playing) return Promise.resolve(ok());
       S.playing = true;

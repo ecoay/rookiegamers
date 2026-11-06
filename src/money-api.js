@@ -5,6 +5,7 @@ import { bearerPlayer, cjson, json, readJSON } from './api.js';
 import { isDeveloper, siteURL } from './dev.js';
 import * as money from './money.js';
 import { verifyWebhook, StripeError } from './stripe.js';
+import * as clips from './clips.js';
 
 // Routes for ads, stores and payouts. The SDK calls /api/v1/ads/* and /api/v1/store/*, developers
 // call /api/dev/games/<slug>/{products,ads,money} and /api/dev/payouts, the portal's admin calls
@@ -12,7 +13,7 @@ import { verifyWebhook, StripeError } from './stripe.js';
 
 const SLUG = '([a-z0-9-]{1,32})';
 const errors = fn => fn().catch(e => {
-  if (e instanceof money.MoneyError || e instanceof StripeError) return { __status: e.status || 400, error: e.message };
+  if (e instanceof money.MoneyError || e instanceof StripeError || e instanceof clips.ClipError) return { __status: e.status || 400, error: e.message };
   throw e;
 });
 const send = (r, ok = 200, cors = false) => {
@@ -26,6 +27,16 @@ const send = (r, ok = 200, cors = false) => {
 export async function moneyV1(req, env, DB, url, path) {
   const method = req.method, site = siteURL(env);
   let m;
+  if (path === '/ads/terms' && method === 'GET') return cjson({ version: clips.AD_TERMS_VERSION, terms: clips.AD_TERMS });
+  // The clip banner on game pages: a promoted clip, or one from the free rotation.
+  if (path === '/ads/banner' && method === 'GET') {
+    const g = await getGame(DB, String(url.searchParams.get('game') || ''));
+    // Only on games in the ad program: they agreed to show other games' clips.
+    const b = g && g.ads === 'approved' && g.live && await clips.bannerClip(DB, g);
+    if (!b) return cjson({ clip: null });
+    const cg = await getGame(DB, b.clip.game);
+    return cjson({ promoted: b.promoted, clip: { ...clips.clipView(b.clip, site), gameTitle: cg.title, play: `${site}/play/${cg.slug}?ref=${g.slug}` } });
+  }
   if (path === '/ads/status' && method === 'GET') {
     const g = await getGame(DB, String(url.searchParams.get('game') || ''));
     return cjson({ rewarded: money.adsOn(g, 'rewarded'), midgame: money.adsOn(g, 'midgame') });
@@ -100,12 +111,26 @@ export async function moneyDev(req, env, DB, url, path, pid, admin) {
     if (method === 'POST') return run(async () => money.requestAds(DB, await ownGame(DB, pid, m[1], admin), await readJSON(req)));
   }
   if ((m = path.match(new RegExp(`^/games/${SLUG}/money$`))) && method === 'GET') return run(async () => money.gameMoney(DB, (await ownGame(DB, pid, m[1], admin)).slug));
+  // Clips: upload (raw MP4 body, ?title=), list, remove, promote.
+  if ((m = path.match(new RegExp(`^/games/${SLUG}/clips$`)))) {
+    if (method === 'GET') return run(async () => { const g = await ownGame(DB, pid, m[1], admin); return { clips: (await clips.listClips(DB, { game: g.slug })).map(c => clips.clipView(c, site)), crossPromo: await clips.crossPromoStats(DB, g.slug), promotions: await clips.promotions(DB, g.slug) }; });
+    if (method === 'PUT' || method === 'POST') return run(async () => {
+      const g = await ownGame(DB, pid, m[1], admin);
+      const size = Number(req.headers.get('content-length'));
+      const body = await req.arrayBuffer();
+      return { clip: clips.clipView(await clips.uploadClip(DB, env, g, body, Number.isFinite(size) && size > 0 ? size : body.byteLength, { title: url.searchParams.get('title') }), site), note: 'RookieGamers reviews clips before they run.' };
+    });
+  }
+  if ((m = path.match(new RegExp(`^/games/${SLUG}/clips/(cl[a-f0-9]{16})$`))) && method === 'DELETE') return run(async () => clips.removeClip(DB, await ownGame(DB, pid, m[1], admin), m[2]));
+  if ((m = path.match(new RegExp(`^/games/${SLUG}/promote$`))) && method === 'POST') return run(async () => clips.promoteCheckout(DB, env, site, await ownGame(DB, pid, m[1], admin), pid, await readJSON(req)));
   if (!admin) {
     if (path === '/payouts' && method === 'GET') return json(await money.payoutStatus(DB, pid));
     if (path === '/payouts/connect' && method === 'POST') return run(async () => money.connectLink(DB, env, site, pid, await readJSON(req)));
     return null;
   }
   // The portal's own controls.
+  if (path === '/clips' && method === 'GET') return json({ clips: (await clips.listClips(DB, { status: url.searchParams.get('status') || 'pending' })).map(c => clips.clipView(c, site)) });
+  if ((m = path.match(/^\/clips\/(cl[a-f0-9]{16})\/review$/)) && method === 'POST') return run(async () => ({ clip: clips.clipView(await clips.reviewClip(DB, m[1], await readJSON(req)), site) }));
   if (path === '/ads/queue' && method === 'GET') return json({ games: await money.adsQueue(DB) });
   if ((m = path.match(new RegExp(`^/games/${SLUG}/ads/review$`))) && method === 'POST') return run(async () => money.reviewAds(DB, m[1], await readJSON(req)));
   if (path === '/campaigns' && method === 'GET') return json({ campaigns: await money.listCampaigns(DB) });
@@ -142,6 +167,7 @@ const inline = v => JSON.stringify(v).replace(/</g, '\\u003c');
 export async function moneyPage(path, url, env, DB, req) {
   let m;
   if ((m = path.match(/^\/ad\/(av[a-f0-9]{20})$/))) return adPage(DB, env, url, m[1]);
+  if ((m = path.match(/^\/clips\/(cl[a-f0-9]{16})\.mp4$/))) return clips.serveClip(env, DB, m[1], req);
   if (path === '/store/done') return storeDone(url);
   if (path === '/dev/payouts/connect' || path === '/dev/payouts/return') {
     const pid = await sessionPlayer(DB, req);
@@ -167,9 +193,16 @@ async function adPage(DB, env, url, id) {
   let sponsor = null;
   if (v.source === 'sponsor' && v.campaign) {
     const c = await DB.prepare('SELECT * FROM campaigns WHERE id = ?').bind(v.campaign).first();
-    if (c) sponsor = { headline: c.headline, blurb: '', color: '#16131f', image: c.image, click: c.click_url, cta: 'Learn more' };
+    if (c) sponsor = { headline: c.headline, blurb: '', color: '#16131f', image: c.image, click: c.click_url, cta: c.clip ? 'Play free' : 'Learn more' };
   }
-  const D = { view: v.id, secret, format: v.format, source: v.source, minMs: { rewarded: money.AD_RULES.rewarded.minMs, midgame: money.AD_RULES.midgame.minMs }, creative: sponsor || house,
+  // A game clip: from the free rotation, or a promoted clip.
+  let clip = null;
+  if (v.clip) {
+    const c = await DB.prepare('SELECT * FROM clips WHERE id = ?').bind(v.clip).first();
+    const cg = c && await getGame(DB, c.game);
+    if (c && cg) clip = { video: `/clips/${c.id}.mp4`, headline: cg.title, blurb: cg.blurb, color: cg.color, click: `${siteURL(env)}/play/${cg.slug}?ref=${v.game}`, cta: 'Play free' };
+  }
+  const D = { view: v.id, secret, format: v.format, source: v.source, ms: v.min_ms ?? (v.source === 'network' ? 0 : money.AD_RULES[v.format].minMs), creative: clip || sponsor || house,
     house, client: env.ADSENSE_CLIENT || null, test: env.ADS_TEST === '1', game: g ? g.title : '' };
   const net = v.source === 'network' && D.client
     ? `<script async ${D.test ? 'data-adbreak-test="on" ' : ''}data-ad-frequency-hint="30s" src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${esc(D.client)}" crossorigin="anonymous"></script>`
@@ -181,25 +214,28 @@ async function adPage(DB, env, url, id) {
 button{border:0;border-radius:999px;padding:9px 16px;font:600 14px system-ui,sans-serif;cursor:pointer;background:rgba(255,255,255,.14);color:#fff}
 button.go{background:#ff5c39}.wrap{height:100%;display:flex;align-items:center;justify-content:center;padding:64px 16px 24px}
 .card{width:min(420px,100%);background:#16131f;border-radius:18px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.5);text-align:center}
-.art{height:200px;background-size:cover;background-position:center}.body{padding:18px 20px 22px}h1{margin:0 0 6px;font-size:22px}p{margin:0 0 16px;opacity:.8}
+.art{height:200px;background-size:cover;background-position:center;position:relative}.art video{width:100%;height:100%;object-fit:cover;display:block;background:#000}.art .snd{position:absolute;right:10px;bottom:10px;padding:6px 10px;font-size:12px;background:rgba(0,0,0,.7)}.card.vid .art{height:auto;aspect-ratio:16/9}.body{padding:18px 20px 22px}h1{margin:0 0 6px;font-size:22px}p{margin:0 0 16px;opacity:.8}
 .count{font-variant-numeric:tabular-nums;opacity:.85}.msg{margin-top:10px;font-weight:600;min-height:1.4em}[hidden]{display:none!important}</style></head>
 <body><div class="bar"><span><span class="tag">Ad</span> <span class="count" id="count"></span></span><button id="close" type="button">Close</button></div>
 <div class="wrap"><div class="card" id="card"><div class="art" id="art"></div><div class="body"><h1 id="h"></h1><p id="p"></p><button class="go" id="cta" type="button"></button><div class="msg" id="msg"></div></div></div></div>
 <script>(function(){var D=${inline(D)};var counted=null,closing=false,timer=null;
 function out(r){if(closing)return;closing=true;parent.postMessage({rg:1,type:'ad-done',view:D.view,data:r},'*')}
 function post(p,b){return fetch('/api/v1/ads/'+p,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(Object.assign({view:D.view,secret:D.secret},b||{}))}).then(function(r){return r.json()}).catch(function(){return {}})}
-function show(c){var a=document.getElementById('art');a.style.background=c.image?'url('+JSON.stringify(c.image)+') center/cover':(c.color||'#ff5c39');
+function show(c){var a=document.getElementById('art'),card=document.getElementById('card');a.textContent='';card.classList.toggle('vid',!!c.video);
+if(c.video){var v=document.createElement('video');v.src=c.video;v.muted=true;v.autoplay=true;v.loop=true;v.playsInline=true;v.setAttribute('playsinline','');a.append(v);v.play().catch(function(){});
+var s=document.createElement('button');s.className='snd';s.type='button';s.textContent='Sound on';s.onclick=function(){v.muted=!v.muted;s.textContent=v.muted?'Sound on':'Sound off'};a.append(s)}
+a.style.background=c.video?'#000':c.image?'url('+JSON.stringify(c.image)+') center/cover':(c.color||'#ff5c39');
 document.getElementById('h').textContent=c.headline;document.getElementById('p').textContent=c.blurb||'';var b=document.getElementById('cta');b.textContent=c.cta||'Open';b.hidden=!c.click;b.onclick=function(){if(c.click)window.open(c.click,'_blank','noopener')};document.getElementById('card').hidden=false}
 function finish(){post('complete').then(function(r){counted=r&&r.shown?r:{shown:true,rewarded:false};var m=document.getElementById('msg');
 if(D.format==='rewarded'&&counted.rewarded){m.textContent=counted.unlocked?'Unlocked!':(counted.needed?'Reward earned ('+counted.progress+' of '+counted.needed+')':'Reward earned');document.getElementById('close').textContent='Continue';setTimeout(function(){out(counted)},1500)}else out(counted)})}
 function clock(ms){var end=Date.now()+ms,c=document.getElementById('count');clearInterval(timer);(function tick(){var s=Math.max(0,Math.ceil((end-Date.now())/1000));c.textContent=s?(D.format==='rewarded'?'Reward in '+s+'s':s+'s'):'';if(!s){clearInterval(timer);finish()}})();timer=setInterval(function(){var s=Math.max(0,Math.ceil((end-Date.now())/1000));c.textContent=s?(D.format==='rewarded'?'Reward in '+s+'s':s+'s'):'';if(!s){clearInterval(timer);finish()}},250)}
 document.getElementById('close').onclick=function(){out(counted||{shown:true,rewarded:false})};
-function house(){D.source='house';post('fallback').then(function(){show(D.house);clock(D.minMs[D.format])})}
+function house(){D.source='house';post('fallback').then(function(r){show(r&&r.clip?{video:'/clips/'+r.clip.id+'.mp4',headline:r.clip.title,click:'/play/'+r.clip.game,cta:'Play free'}:D.house);clock(r&&r.minMs!=null?r.minMs:D.ms)})}
 if(D.source==='network'&&D.client){document.getElementById('card').hidden=true;window.adsbygoogle=window.adsbygoogle||[];var adBreak=function(o){adsbygoogle.push(o)},adConfig=adBreak,done=false;
 adConfig({preloadAdBreaks:'on',sound:'on'});var guard=setTimeout(function(){if(!done){done=true;house()}},5000);
 var base={name:'rg-'+D.format,adBreakDone:function(i){clearTimeout(guard);if(done)return;done=true;if(i.breakStatus==='viewed')finish();else if(i.breakStatus==='dismissed')out({shown:true,rewarded:false});else if(D.format==='rewarded')house();else out({shown:false,rewarded:false})}};
 if(D.format==='rewarded')adBreak(Object.assign(base,{type:'reward',beforeReward:function(showAd){clearTimeout(guard);showAd()},adDismissed:function(){},adViewed:function(){}}));else adBreak(Object.assign(base,{type:'next'}))}
-else{show(D.creative);clock(D.minMs[D.format])}})()</script></body></html>`);
+else{show(D.creative);clock(D.ms)}})()</script></body></html>`);
 }
 
 function storeDone(url) {
@@ -220,7 +256,8 @@ export async function devMoneySection(DB, env, pid, games) {
   const rows = await Promise.all(games.map(async g => {
     const full = await getGame(DB, g.slug);
     const products = await money.listProducts(DB, full, { all: true });
-    return { g: full, ads: money.adsView(full), products };
+    const cl = await clips.listClips(DB, { game: full.slug });
+    return { g: full, ads: money.adsView(full), products, clips: cl, promo: await clips.crossPromoStats(DB, full.slug) };
   }));
   const payBox = !env.STRIPE_SECRET_KEY ? '<p class="muted">Payouts open once the portal\'s Stripe account is connected.</p>'
     : pay.ready ? `<p>Payouts are on. Paid on the 1st of each month once you have ${usd(pay.minimumCents)} cleared.</p>`
@@ -228,14 +265,23 @@ export async function devMoneySection(DB, env, pid, games) {
   const body = `<h2 id="money">Money</h2>
 <p class="lede">Every sale goes through RookieGamers. You keep ${money.SPLIT.store * 100}% of store sales after Stripe's fee and tax, and ${money.SPLIT.ads * 100}% of ad revenue. Store money clears after ${money.HOLD_DAYS} days.</p>
 <div class="agents"><div class="panel"><h3>Balance</h3><p><strong>${usd(pay.availableCents)}</strong> ready · ${usd(pay.pendingCents)} clearing · ${usd(pay.paidCents)} paid so far</p>${payBox}</div></div>
-${rows.length ? rows.map(({ g, ads, products }) => `<div class="panel" style="margin-top:14px"><h3><span>${esc(g.title)}</span><span class="muted small">Ads: ${esc(ADS_LABEL[ads.status] || ads.status)}</span></h3>
+${rows.length ? rows.map(({ g, ads, products, clips: cl, promo }) => `<div class="panel" style="margin-top:14px"><h3><span>${esc(g.title)}</span><span class="muted small">Ads: ${esc(ADS_LABEL[ads.status] || ads.status)}</span></h3>
 ${ads.note ? `<p class="note err">${esc(ads.note)}</p>` : ''}
-${ads.status === 'off' || ads.status === 'rejected' ? `<p class="muted">Ask for ads once the game is live. We review it, then <code>rg.ads.rewarded()</code> and <code>rg.ads.midgame()</code> start showing ads.</p><button class="btn small" data-ads="${esc(g.slug)}" type="button"${g.live ? '' : ' disabled'}>Ask for ads</button>` : ''}
+${ads.status === 'off' || ads.status === 'rejected' ? `<p class="muted">Ask for ads once the game is live. We review it, then <code>rg.ads.rewarded()</code> and <code>rg.ads.midgame()</code> start showing ads.</p><details class="terms"><summary>The ad terms</summary><ul>${clips.AD_TERMS.map(t => `<li>${esc(t)}</li>`).join('')}</ul></details>
+<label class="small"><input type="checkbox" data-agree="${esc(g.slug)}"${ads.agreedAt ? ' checked' : ''}> I accept the ad terms, including showing other games' clips unpaid</label>
+<button class="btn small" data-ads="${esc(g.slug)}" type="button"${g.live ? '' : ' disabled'}>Ask for ads</button>` : ''}
+${ads.status === 'approved' || ads.status === 'requested' ? `<h4 style="margin:14px 0 6px">Clips</h4><p class="muted small">Upload a gameplay clip, 30 to 60 seconds, as an MP4. Once approved it runs free in other games when they have no paid ad, as theirs do in yours (last 30 days: ${promo.clipsShownInYourGame} shown in your game, yours shown ${promo.yourClipsShownElsewhere} times). Clips of 30 seconds or less can be promoted as paid ads.</p>
+${cl.length ? `<table class="t"><tr><th>Clip</th><th>Length</th><th>Status</th><th></th></tr>${cl.map(c => `<tr><td><a href="/clips/${esc(c.id)}.mp4" target="_blank" rel="noopener">${esc(c.title)}</a></td><td>${Math.round(c.seconds)}s</td><td>${esc(c.status)}${c.note ? ` <span class="muted">(${esc(c.note)})</span>` : ''}</td><td>${c.status === 'approved' && c.seconds <= clips.CLIP.shortS + 0.5 ? `<form class="promo" data-game="${esc(g.slug)}" data-clip="${esc(c.id)}" style="display:inline-flex;gap:6px"><input name="budget" placeholder="Budget, like 50" inputmode="decimal" style="max-width:110px"><button class="btn small" type="submit">Promote</button></form> ` : ''}<button class="btn ghost small" data-del-clip="${esc(c.id)}" data-game="${esc(g.slug)}" type="button">Remove</button></td></tr>`).join('')}</table>` : ''}
+<form class="clipup" data-game="${esc(g.slug)}" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px"><input type="file" name="file" accept="video/mp4" required><button class="btn small" type="submit">Upload clip</button><span class="msg"></span></form>` : ''}
 <table class="t"><tr><th>Product</th><th>Kind</th><th>Price</th><th>Ads to unlock</th><th></th></tr>${products.map(p => `<tr><td>${esc(p.title)} <code>${esc(p.sku)}</code>${p.active ? '' : ' <span class="muted">(off)</span>'}</td><td>${p.kind === 'pass' ? 'Monthly pass' : 'Item'}</td><td>${p.priceCents ? usd(p.priceCents) : '-'}</td><td>${p.adUnlock || '-'}</td><td><button class="btn ghost small" data-del-sku="${esc(p.sku)}" data-game="${esc(g.slug)}" type="button">Remove</button></td></tr>`).join('')}</table>
 <form class="form prod" data-game="${esc(g.slug)}" style="flex-direction:row;flex-wrap:wrap;gap:8px;margin-top:8px"><input name="sku" placeholder="sku, like skin.gold" required style="max-width:160px"><input name="title" placeholder="Title" required style="max-width:180px">
 <select name="kind"><option value="item">Item</option><option value="pass">Monthly pass</option></select><input name="price" placeholder="Price, like 4.99" inputmode="decimal" style="max-width:120px"><input name="ads" placeholder="Ads to unlock" inputmode="numeric" style="max-width:120px"><button class="btn small" type="submit">Add</button><div class="msg"></div></form></div>`).join('') : ''}`;
   const script = `<script>
-document.querySelectorAll('[data-ads]').forEach(b=>b.onclick=async()=>{const r=await fetch('/api/dev/games/'+b.dataset.ads+'/ads',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});const j=await r.json();if(r.ok)location.reload();else b.insertAdjacentText('afterend',' '+j.error)});
+document.querySelectorAll('[data-ads]').forEach(b=>b.onclick=async()=>{const box=document.querySelector('[data-agree="'+b.dataset.ads+'"]');const r=await fetch('/api/dev/games/'+b.dataset.ads+'/ads',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({agree:!!(box&&box.checked)})});const j=await r.json();if(r.ok)location.reload();else b.insertAdjacentText('afterend',' '+j.error)});
+document.querySelectorAll('form.clipup').forEach(f=>f.onsubmit=async e=>{e.preventDefault();const file=f.file.files[0];const m=f.querySelector('.msg');if(!file)return;m.textContent='Uploading...';
+const r=await fetch('/api/dev/games/'+f.dataset.game+'/clips?title='+encodeURIComponent(file.name.replace(/\.[^.]+$/,'')),{method:'PUT',headers:{'content-type':'video/mp4'},body:file});const j=await r.json();if(r.ok)location.reload();else m.textContent=j.error});
+document.querySelectorAll('[data-del-clip]').forEach(b=>b.onclick=async()=>{await fetch('/api/dev/games/'+b.dataset.game+'/clips/'+b.dataset.delClip,{method:'DELETE',headers:{'content-type':'application/json'}});location.reload()});
+document.querySelectorAll('form.promo').forEach(f=>f.onsubmit=async e=>{e.preventDefault();const c=Math.round(parseFloat(f.budget.value)*100);const r=await fetch('/api/dev/games/'+f.dataset.game+'/promote',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({clip:f.dataset.clip,budgetCents:c})});const j=await r.json();if(r.ok)location.href=j.url;else f.insertAdjacentText('afterend',' '+j.error)});
 document.querySelectorAll('[data-del-sku]').forEach(b=>b.onclick=async()=>{await fetch('/api/dev/games/'+b.dataset.game+'/products/'+encodeURIComponent(b.dataset.delSku),{method:'DELETE',headers:{'content-type':'application/json'}});location.reload()});
 document.querySelectorAll('form.prod').forEach(f=>f.onsubmit=async e=>{e.preventDefault();const d=new FormData(f);const price=String(d.get('price')||'').trim();const body={title:d.get('title'),kind:d.get('kind'),priceCents:price?Math.round(parseFloat(price)*100):null,adUnlock:Number(d.get('ads')||0)};
 const r=await fetch('/api/dev/games/'+f.dataset.game+'/products/'+encodeURIComponent(String(d.get('sku')).toLowerCase()),{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(body)});const j=await r.json();if(r.ok)location.reload();else f.querySelector('.msg').textContent=j.error});

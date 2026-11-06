@@ -39,6 +39,7 @@ async function setup() {
   return { DB, devId, player, game: () => getGame(DB, 'dodge') };
 }
 const rewind = (DB, view, ms) => DB.prepare('UPDATE ad_views SET started_at = started_at - ? WHERE id = ?').bind(ms, view).run();
+const approve = async (DB, slug) => { await DB.prepare('UPDATE games SET ads_agreed_at = 1 WHERE slug = ?').bind(slug).run(); return money.reviewAds(DB, slug, { status: 'approved' }); };
 const secretOf = start => new URL(start.url).searchParams.get('s');
 
 test('ads stay off until the portal approves the game', async () => {
@@ -47,7 +48,11 @@ test('ads stay off until the portal approves the game', async () => {
   await DB.prepare('UPDATE games SET live = 0 WHERE slug = ?').bind('dodge').run();
   await assert.rejects(money.requestAds(DB, await game()), /Publish the game first/);
   await DB.prepare('UPDATE games SET live = 1 WHERE slug = ?').bind('dodge').run();
-  assert.equal((await money.requestAds(DB, await game(), { formats: ['rewarded'] })).status, 'requested');
+  await assert.rejects(money.requestAds(DB, await game(), { formats: ['rewarded'] }), /ad terms/);
+  await assert.rejects(money.reviewAds(DB, 'dodge', { status: 'approved' }), /hasn't accepted/);
+  const asked = await money.requestAds(DB, await game(), { formats: ['rewarded'], agree: true });
+  assert.equal(asked.status, 'requested');
+  assert.ok(asked.agreedAt);
   assert.equal((await money.adsQueue(DB))[0].status, 'requested');
   await assert.rejects(money.reviewAds(DB, 'dodge', { status: 'rejected' }), /Say why/);
   await money.reviewAds(DB, 'dodge', { status: 'approved' });
@@ -60,7 +65,7 @@ test('ads stay off until the portal approves the game', async () => {
 
 test('a rewarded ad has to run its time, counts once, and signs a receipt that is not a login', async () => {
   const { DB, game, player } = await setup();
-  await money.reviewAds(DB, 'dodge', { status: 'approved' });
+  await approve(DB, 'dodge');
   const s = await money.startAd(DB, env, req(), SITE, await game(), { format: 'rewarded' }, player);
   assert.equal((await money.completeAd(DB, env, s.view, secretOf(s))).status, 400, 'too early');
   assert.equal((await money.completeAd(DB, env, s.view, 'wrong')).status, 404);
@@ -77,7 +82,7 @@ test('a rewarded ad has to run its time, counts once, and signs a receipt that i
 
 test('midgame ads are spaced out, and ad unlocks grant the item', async () => {
   const { DB, game, player } = await setup();
-  await money.reviewAds(DB, 'dodge', { status: 'approved' });
+  await approve(DB, 'dodge');
   const m1 = await money.startAd(DB, env, req(), SITE, await game(), { format: 'midgame' }, null);
   assert.equal(m1.fill, true);
   assert.equal((await money.startAd(DB, env, req(), SITE, await game(), { format: 'midgame' }, null)).reason, 'too-soon');
@@ -173,7 +178,7 @@ test('webhook signatures are checked', async () => {
 
 test('ad revenue: sponsors are priced from views, and the network report splits by views, 70% to developers', async () => {
   const { DB, game, devId } = await setup();
-  for (const slug of ['dodge', 'other']) await money.reviewAds(DB, slug, { status: 'approved' });
+  for (const slug of ['dodge', 'other']) await approve(DB, slug);
   const lastMonth = new Date(Date.now() - 32 * DAY);
   const month = lastMonth.toISOString().slice(0, 7);
   const at = Date.UTC(lastMonth.getUTCFullYear(), lastMonth.getUTCMonth(), 10);

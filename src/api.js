@@ -200,9 +200,10 @@ export async function apiDev(req, env, DB, url, { admin = false } = {}) {
   if (!admin) {
     pid = await dev.keyPlayer(DB, req);
     if (!pid) {
-      // The /dev page uses the session cookie; it sends JSON, so cross-site posts can't reach here.
+      // The /dev page uses the session cookie; it sends JSON or PUTs a file, which browsers only send
+      // cross-site after a CORS preflight this API never grants, so cross-site requests can't reach here.
       const s = await sessionPlayer(DB, req);
-      if (s && await dev.isDeveloper(DB, s) && (method === 'GET' || (req.headers.get('content-type') || '').includes('application/json'))) pid = s;
+      if (s && await dev.isDeveloper(DB, s) && (method === 'GET' || method === 'PUT' || (req.headers.get('content-type') || '').includes('application/json'))) pid = s;
     }
     if (!pid) return json({ error: 'Send a developer API key: Authorization: Bearer rgk_... (make one at /dev).' }, 401);
   }

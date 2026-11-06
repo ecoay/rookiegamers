@@ -126,6 +126,26 @@
     return adOpen;
   }
 
+  // The clip banner: a promoted clip, or one from the free cross-promo rotation.
+  (async () => {
+    const box = document.getElementById('rgBanner');
+    if (!box) return;
+    try {
+      const r = await (await fetch('/api/v1/ads/banner?game=' + encodeURIComponent(B.game))).json();
+      if (!r.clip) return;
+      const h = document.createElement('h3');
+      const t = document.createElement('span'); t.textContent = r.clip.gameTitle;
+      const tag = document.createElement('span'); tag.className = 'muted small'; tag.textContent = r.promoted ? 'Sponsored' : 'Featured';
+      h.append(t, tag);
+      const v = document.createElement('video');
+      v.src = r.clip.url; v.muted = true; v.autoplay = true; v.loop = true; v.playsInline = true; v.setAttribute('playsinline', '');
+      v.style.cssText = 'width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:10px;background:#000;display:block';
+      const a = document.createElement('a'); a.className = 'btn small'; a.href = r.clip.play; a.textContent = 'Play ' + r.clip.gameTitle; a.style.marginTop = '10px';
+      box.append(h, v, a);
+      box.hidden = false;
+    } catch (e) { /* no banner */ }
+  })();
+
   const sb = document.getElementById('shareBtn');
   if (sb) sb.onclick = () => share({});
 

@@ -1,6 +1,7 @@
 import { now, newId, DAY, sha256, cleanText, getGame, getPlayer, monthKey, safeJSON } from './db.js';
 import { signToken } from './tokens.js';
 import { stripe, stripeReady, StripeError } from './stripe.js';
+import { pickHouseClip, startPromotion, AD_TERMS_VERSION, CLIP } from './clips.js';
 
 // Money on RookieGamers: portal ads, each game's store, and paying developers.
 //
@@ -78,6 +79,10 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS payouts (id TEXT PRIMARY KEY, developer TEXT NOT NULL, amount_cents INTEGER NOT NULL, status TEXT NOT NULL,
     transfer TEXT, error TEXT, created_at INTEGER NOT NULL)`,
   `CREATE INDEX IF NOT EXISTS payouts_dev ON payouts(developer, created_at)`,
+  // Gameplay clips (30 to 60 seconds) for the cross-promo rotation and paid promotions. See clips.js.
+  `CREATE TABLE IF NOT EXISTS clips (id TEXT PRIMARY KEY, game TEXT NOT NULL, title TEXT NOT NULL, seconds REAL NOT NULL, bytes INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending', note TEXT, reviewed_at INTEGER, created_at INTEGER NOT NULL)`,
+  `CREATE INDEX IF NOT EXISTS clips_game ON clips(game, status)`,
   `CREATE TABLE IF NOT EXISTS stripe_events (id TEXT PRIMARY KEY, type TEXT NOT NULL, at INTEGER NOT NULL)`,
 ];
 const COLUMNS = [
@@ -86,6 +91,12 @@ const COLUMNS = [
   'ALTER TABLE games ADD COLUMN ads_note TEXT',
   'ALTER TABLE games ADD COLUMN ads_at INTEGER',
   `ALTER TABLE games ADD COLUMN ad_formats TEXT NOT NULL DEFAULT '["rewarded","midgame"]'`,
+  // When the developer accepted the ad terms (the cross-promo agreement), and which version.
+  'ALTER TABLE games ADD COLUMN ads_agreed_at INTEGER',
+  'ALTER TABLE games ADD COLUMN ads_terms TEXT',
+  'ALTER TABLE campaigns ADD COLUMN clip TEXT',
+  'ALTER TABLE ad_views ADD COLUMN clip TEXT',
+  'ALTER TABLE ad_views ADD COLUMN min_ms INTEGER',
   'ALTER TABLE developers ADD COLUMN stripe_account TEXT',
   'ALTER TABLE developers ADD COLUMN payouts_ready INTEGER NOT NULL DEFAULT 0',
 ];
@@ -98,14 +109,17 @@ export async function migrateMoney(DB) {
 /* ---------- ad review ---------- */
 
 export function adsView(g) {
-  return { status: g.ads || 'off', note: g.ads_note || null, reviewedAt: g.ads_at || null, formats: safeJSON(g.ad_formats, FORMATS) };
+  return { status: g.ads || 'off', note: g.ads_note || null, reviewedAt: g.ads_at || null, formats: safeJSON(g.ad_formats, FORMATS), agreedAt: g.ads_agreed_at || null };
 }
 const cleanFormats = f => { const list = [].concat(f || []).filter(x => FORMATS.includes(x)); return list.length ? [...new Set(list)] : FORMATS; };
 
-// The developer asks for ads on a live game.
-export async function requestAds(DB, g, { formats } = {}) {
+// The developer asks for ads on a live game, and accepts the ad terms (see AD_TERMS in clips.js):
+// with no paid ad, their game shows other games' clips unpaid, and their clips run elsewhere free.
+export async function requestAds(DB, g, { formats, agree } = {}) {
   if (!g.live) fail(400, 'Publish the game first. Ads are reviewed on live games.');
-  if (g.ads === 'approved') return adsView(g);
+  if (agree !== true && !g.ads_agreed_at) fail(400, 'Accept the ad terms first: { "agree": true }. With no paid ad, your game shows other games\' clips, unpaid, and your clips run in theirs.');
+  if (agree === true) await DB.prepare('UPDATE games SET ads_agreed_at = COALESCE(ads_agreed_at, ?), ads_terms = ? WHERE slug = ?').bind(now(), AD_TERMS_VERSION, g.slug).run();
+  if (g.ads === 'approved') return adsView(await getGame(DB, g.slug));
   await DB.prepare(`UPDATE games SET ads = 'requested', ads_note = NULL, ad_formats = ? WHERE slug = ?`).bind(JSON.stringify(cleanFormats(formats)), g.slug).run();
   return adsView(await getGame(DB, g.slug));
 }
@@ -116,6 +130,7 @@ export async function reviewAds(DB, slug, { status, note, formats }) {
   if (!g) fail(404, `There's no game called "${slug}".`);
   if (!ADS.includes(status)) fail(400, `status is one of ${ADS.join(', ')}.`);
   if (status === 'rejected' && !cleanText(note, 300)) fail(400, 'Say why, so the developer can fix it: { "note": "..." }.');
+  if (status === 'approved' && !g.ads_agreed_at) fail(400, 'The developer hasn\'t accepted the ad terms yet.');
   await DB.prepare('UPDATE games SET ads = ?, ads_note = ?, ads_at = ?, ad_formats = COALESCE(?, ad_formats) WHERE slug = ?')
     .bind(status, cleanText(note, 300) || null, now(), formats ? JSON.stringify(cleanFormats(formats)) : null, g.slug).run();
   return { slug: g.slug, ...adsView(await getGame(DB, g.slug)) };
@@ -136,8 +151,10 @@ async function whoFor(req, pid) {
   return 'ip:' + (await sha256('rg-ads:' + ip)).slice(0, 20);
 }
 
+// A paid ad: a sponsor, or another game's promoted clip (never the game's own).
 async function pickSponsor(DB, g, format) {
-  const rows = (await DB.prepare(`SELECT * FROM campaigns WHERE active = 1 AND kind = 'sponsor' AND spent_milli < budget_cents * 1000`).all()).results
+  const rows = (await DB.prepare(`SELECT p.*, c.seconds AS clip_seconds FROM campaigns p LEFT JOIN clips c ON c.id = p.clip
+    WHERE p.active = 1 AND p.kind = 'sponsor' AND p.spent_milli < p.budget_cents * 1000 AND (p.clip IS NULL OR (c.status = 'approved' AND c.game != ?))`).bind(g.slug).all()).results
     .filter(c => safeJSON(c.formats, FORMATS).includes(format) && (() => { const only = safeJSON(c.games, []); return !only.length || only.includes(g.slug); })());
   if (!rows.length) return null;
   // Weighted by price, so higher-paying sponsors show more often.
@@ -167,13 +184,21 @@ export async function startAd(DB, env, req, site, g, { format, sku, mode }, pid)
   }
   const sponsor = await pickSponsor(DB, g, format);
   const source = sponsor ? 'sponsor' : env.ADSENSE_CLIENT && mode === 'portal' ? 'network' : 'house';
+  // The free rotation: another game's clip (rewarded ads only use clips of 30 seconds or less).
+  const clip = source === 'house' ? await pickHouseClip(DB, g, { shortOnly: format === 'rewarded' }) : null;
+  const ms = minMs(source, format, clip ? clip.seconds : sponsor?.clip_seconds);
   const id = newId('av', 20), secret = newId('', 24);
-  await DB.prepare('INSERT INTO ad_views (id, secret, game, who, player_id, format, source, campaign, sku, started_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-    .bind(id, await sha256(secret), g.slug, who, pid || null, format, source, sponsor?.id || null, product ? product.sku : null, t).run();
-  return { fill: true, view: id, url: `${site}/ad/${id}?s=${secret}`, format, source, minMs: minMs(source, format) };
+  await DB.prepare('INSERT INTO ad_views (id, secret, game, who, player_id, format, source, campaign, clip, sku, min_ms, started_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .bind(id, await sha256(secret), g.slug, who, pid || null, format, source, sponsor?.id || null, clip?.id || sponsor?.clip || null, product ? product.sku : null, ms, t).run();
+  return { fill: true, view: id, url: `${site}/ad/${id}?s=${secret}`, format, source, minMs: ms };
 }
 
-const minMs = (source, format) => (source === 'network' ? 0 : AD_RULES[format].minMs);
+// How long an ad has to run before it counts. A rewarded clip runs to its end (30 seconds at most).
+const minMs = (source, format, clipSeconds) => {
+  if (source === 'network') return 0;
+  if (format === 'rewarded' && clipSeconds) return Math.round(Math.min(clipSeconds, CLIP.shortS) * 1000);
+  return AD_RULES[format].minMs;
+};
 
 async function viewFor(DB, id, secret) {
   if (!/^av[a-f0-9]{20}$/.test(String(id)) || !secret) return null;
@@ -185,8 +210,11 @@ async function viewFor(DB, id, secret) {
 export async function adFallback(DB, id, secret) {
   const v = await viewFor(DB, id, secret);
   if (!v || v.status !== 'started' || v.source !== 'network') return { error: 'Unknown ad.' };
-  await DB.prepare(`UPDATE ad_views SET source = 'house', started_at = ? WHERE id = ?`).bind(now(), v.id).run();
-  return { source: 'house', minMs: minMs('house', v.format) };
+  const g = await getGame(DB, v.game);
+  const clip = await pickHouseClip(DB, g, { shortOnly: v.format === 'rewarded' });
+  const ms = minMs('house', v.format, clip?.seconds);
+  await DB.prepare(`UPDATE ad_views SET source = 'house', clip = ?, min_ms = ?, started_at = ? WHERE id = ?`).bind(clip?.id || null, ms, now(), v.id).run();
+  return { source: 'house', minMs: ms, clip: clip ? { id: clip.id, game: clip.game, title: clip.title } : null };
 }
 
 // The ad ran to the end. Counts it, pays the sponsor's rate, moves ad unlocks along, and signs
@@ -195,7 +223,7 @@ export async function completeAd(DB, env, id, secret) {
   const v = await viewFor(DB, id, secret);
   if (!v) return { status: 404, error: 'Unknown ad.' };
   if (v.status !== 'started') return { status: 409, error: 'That ad was already counted.' };
-  if (now() - v.started_at < minMs(v.source, v.format) - 1000) return { status: 400, error: 'The ad hasn\'t finished.' };
+  if (now() - v.started_at < (v.min_ms ?? minMs(v.source, v.format)) - 1000) return { status: 400, error: 'The ad hasn\'t finished.' };
   const claim = await DB.prepare(`UPDATE ad_views SET status = 'done', done_at = ? WHERE id = ? AND status = 'started'`).bind(now(), v.id).run();
   if (!claim.meta || !claim.meta.changes) return { status: 409, error: 'That ad was already counted.' };
   if (v.source === 'sponsor' && v.campaign) {
@@ -421,6 +449,7 @@ export async function handleStripeEvent(DB, env, ev) {
   switch (ev.type) {
     case 'checkout.session.completed':
     case 'checkout.session.async_payment_succeeded': {
+      if (obj.metadata?.kind === 'promo') return obj.payment_status === 'paid' ? startPromotion(DB, env, obj) : { ok: true, waiting: true };
       const o = await getOrder(DB, obj.client_reference_id || metaOrder(obj));
       if (!o || o.status === 'paid') return { ok: true };
       if (obj.payment_status !== 'paid' && obj.payment_status !== 'no_payment_required') return { ok: true, waiting: true };

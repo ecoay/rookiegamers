@@ -113,6 +113,7 @@ async function play(DB, req, env, url, slug) {
 <aside class="side"><div class="panel"><h3><span>${esc(g.score_label)}</span><span class="tabs"><button type="button" data-b="m" aria-pressed="true">${esc(monthLabel(monthKey()))}</button><button type="button" data-b="a" aria-pressed="false">All time</button></span></h3>
 <div id="bm">${boardList(monthly, g.score_label)}</div><div id="ba" hidden>${boardList(alltime, g.score_label)}</div></div>
 <div class="panel"><h3>Hall of Fame</h3>${hall.length ? `<ol class="board">${hall.map(h => `<li class="top${h.rank}"><span class="n">${h.rank}</span><span class="who"><a href="/u/${esc(h.player.id)}">${esc(h.player.name)}</a><small>${esc(h.monthLabel)}</small></span><span class="s">${h.score.toLocaleString('en-US')}</span></li>`).join('')}</ol>` : '<p class="muted">At the end of each month the top 3 are kept here forever and earn a title shown across RookieGamers.</p>'}</div>
+<div class="panel banner" id="rgBanner" hidden></div>
 ${more.length ? `<div class="panel"><h3>Play next</h3><div class="shelf" style="grid-template-columns:repeat(2,minmax(0,1fr))">${more.map(card).join('')}</div></div>` : ''}</aside></div>
 <dialog class="signin" id="signinDlg"><h3 style="margin-top:0">Sign in to save your scores</h3><p class="muted">One RookieGamers account works in every game.</p>
 <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="dlgGo" type="button">Sign in</button><button class="btn ghost" id="dlgNo" type="button">Keep playing as a guest</button></div></dialog>

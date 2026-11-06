@@ -15,8 +15,10 @@ export const SEED_GAMES = [
     blurb: '', tags: ['social'], color: '#3ddc97',
   },
   // Listed but not live until their URLs are in. Set url and origins, then publish.
-  { slug: 'handofnine', title: 'Hand of Nine', kind: 'linked', live: false, developer: 'ecoay',
-    blurb: 'Arrange nine cards on a 3x3 table, match twelve touching edges, and chase a Perfect Hand worth 2400.', tags: ['cards', 'puzzle'], color: '#d4a64a' },
+  // Hosted build from handofnine (npm run build:rookiegamers). The board holds official Daily Challenge results.
+  { slug: 'handofnine', title: 'Hand of Nine', kind: 'hosted', live: false, developer: 'ecoay',
+    blurb: 'Arrange nine cards on a 3x3 table, match twelve touching edges, and chase a Perfect Hand worth 2400.', tags: ['cards', 'puzzle'], color: '#d4a64a',
+    score_label: 'Daily hand', score_mode: 'best', score_order: 'desc', max_score: 2400 },
   { slug: 'youcult', title: 'YouCult', kind: 'hosted', live: false, developer: 'ecoay',
     blurb: 'Found a cult from the things you won\'t shut up about, rule your cardboard followers, survive the schism and fight rival cults for The Feed.',
     tags: ['strategy', 'satire', 'sim'], color: '#ff2bd6', score_label: 'Season score', score_mode: 'best', score_order: 'desc' },

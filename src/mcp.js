@@ -33,6 +33,7 @@ const GAME_FIELDS = {
   scoreMode: { type: 'string', enum: ['best', 'sum'], description: '"best": keep each player\'s best (default). "sum": add up points; only the game\'s server can report.' },
   maxScore: { type: 'number', description: 'Optional cap on scores sent from the browser.' },
   coin: { type: 'boolean', description: 'Opt this game into the RookieGamers coin (Solana) as a discounted way to pay. Off by default.' },
+  wallet: { type: 'string', enum: ['none', 'optional', 'required'], description: 'How the game uses crypto wallets. "none" (default for most games), "optional" (wallet unlocks extras), or "required" (an onchain game, listed in the Web3 Arcade, 18+ players only).' },
   payoutWallet: str('Solana address that receives the developer\'s 40% of coin payments.'),
 };
 

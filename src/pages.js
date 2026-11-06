@@ -6,6 +6,7 @@ import { isDeveloper, myGames, listKeys, siteURL } from './dev.js';
 import { mintFor } from './api.js';
 import { devMoneySection } from './money-api.js';
 import SDK_DOCS from '../docs/SDK.md';
+import { homePage } from './home.js';
 
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const html = (body, status = 200, headers = {}) => new Response(body, { status, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', ...headers } });
@@ -39,18 +40,6 @@ async function viewer(DB, req) {
   return p ? { ...publicPlayer(p), gems: p.gems } : null;
 }
 
-const initial = s => esc((s || '?').trim().charAt(0).toUpperCase());
-function art(g) {
-  const color = /^#[0-9a-f]{6}$/i.test(g.color || '') ? g.color : '#8f6bff';
-  const cover = g.cover ? (/^https:\/\//.test(g.cover) ? g.cover : null) : null;
-  return `<div class="art" style="background:${cover ? `url('${esc(cover)}') center/cover,` : ''}linear-gradient(135deg,${color},#191626)">${cover ? '' : initial(g.title)}</div>`;
-}
-function card(g) {
-  const mins = Math.round((g.stats?.perPlayer || 0) / 60000);
-  return `<a class="card" href="/play/${esc(g.slug)}">${g.isNew ? '<span class="pill">New</span>' : ''}${g.multiplayer ? '<span class="pill alt">Multiplayer</span>' : ''}
-${art(g)}<div class="body"><h3>${esc(g.title)}</h3><p>${esc(g.blurb)}</p><div class="meta">by ${esc(g.developer)}${mins ? ` · ${mins} min per player` : ''}</div></div></a>`;
-}
-
 function boardList(rows, label) {
   if (!rows.length) return `<p class="muted">No ${esc(label.toLowerCase())} yet this month. Be the first.</p>`;
   return `<ol class="board">${rows.map(r => `<li class="top${r.rank}"><span class="n">${r.rank}</span><span class="who"><a href="/u/${esc(r.player.id)}">${esc(r.player.name)}</a>${r.player.title ? `<small>${esc(r.player.title)}</small>` : ''}</span><span class="s">${r.score.toLocaleString('en-US')}</span></li>`).join('')}</ol>`;
@@ -60,12 +49,7 @@ function boardList(rows, label) {
 
 async function home(DB, req, env) {
   const [me, games] = await Promise.all([viewer(DB, req), frontPage(DB)]);
-  const body = `<section class="hero"><h1>Indie web games. <em>One account for all of them.</em></h1>
-<p class="lede">Play free games from indie developers. Your level, your titles and your Hall of Fame follow you into every game, and every game sends you to the next.</p></section>
-<h2>Play now</h2>${games.length ? `<div class="shelf">${games.map(card).join('')}</div>` : '<div class="empty">The first games are on their way.</div>'}
-<h2>Make games? Publish them here.</h2>
-<p class="lede">Build with your AI or by hand. Connect Claude Code, Codex or Grok to RookieGamers and publish straight from your editor. AI-built games are welcome: we judge games on whether they're fun. <a href="/dev">Start publishing</a>.</p>`;
-  return html(layout({ me, active: '/', body, url: siteURL(env) + '/' }));
+  return html(homePage({ me, games, site: siteURL(env) }));
 }
 
 function frameFor(env, g, url) {

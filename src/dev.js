@@ -84,6 +84,8 @@ function cleanGame(b, existing) {
   if (b.devices !== undefined) out.devices = ['mobile', 'desktop', 'both'].includes(b.devices) ? b.devices : 'both';
   if (b.multiplayer !== undefined) out.multiplayer = b.multiplayer ? 1 : 0;
   if (b.coin !== undefined) out.coin = b.coin ? 1 : 0;
+  // How a game uses wallets. 'required' puts it in the Web3 Arcade (18+ players only).
+  if (b.wallet !== undefined) out.wallet = ['none', 'optional', 'required'].includes(b.wallet) ? b.wallet : null;
   if (b.payoutWallet !== undefined) {
     if (b.payoutWallet && !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(b.payoutWallet)) fail(400, 'That doesn\'t look like a Solana address.');
     out.payout_wallet = b.payoutWallet || null;

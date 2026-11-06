@@ -74,6 +74,8 @@ const COLUMNS = [
   'ALTER TABLE players ADD COLUMN gems INTEGER NOT NULL DEFAULT 0',
   'ALTER TABLE players ADD COLUMN referred_by TEXT',
   'ALTER TABLE players ADD COLUMN ref_paid INTEGER NOT NULL DEFAULT 0',
+  // wallet: 'none', 'optional' or 'required' (an onchain game). Unset means optional for coin games.
+  'ALTER TABLE games ADD COLUMN wallet TEXT',
 ];
 
 export async function migrate(DB) {
@@ -142,7 +144,7 @@ export function gameView(g) {
   return {
     slug: g.slug, title: g.title, kind: g.kind, url: g.url, origins: safeJSON(g.origins, []), developer: g.developer, blurb: g.blurb,
     tags: safeJSON(g.tags, []), cover: g.cover, color: g.color, devices: g.devices, multiplayer: !!g.multiplayer,
-    scoreLabel: g.score_label, scoreMode: g.score_mode, scoreOrder: g.score_order, coin: !!g.coin, releasedAt: g.released_at,
+    scoreLabel: g.score_label, scoreMode: g.score_mode, scoreOrder: g.score_order, coin: !!g.coin, wallet: g.wallet || (g.coin ? 'optional' : 'none'), releasedAt: g.released_at,
   };
 }
 

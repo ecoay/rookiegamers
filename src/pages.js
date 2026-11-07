@@ -40,6 +40,18 @@ async function viewer(DB, req) {
   return p ? { ...publicPlayer(p), gems: p.gems } : null;
 }
 
+const initial = s => esc((s || '?').trim().charAt(0).toUpperCase());
+function art(g) {
+  const color = /^#[0-9a-f]{6}$/i.test(g.color || '') ? g.color : '#8f6bff';
+  const cover = g.cover ? (/^https:\/\//.test(g.cover) ? g.cover : null) : null;
+  return `<div class="art" style="background:${cover ? `url('${esc(cover)}') center/cover,` : ''}linear-gradient(135deg,${color},#191626)">${cover ? '' : initial(g.title)}</div>`;
+}
+function card(g) {
+  const mins = Math.round((g.stats?.perPlayer || 0) / 60000);
+  return `<a class="card" href="/play/${esc(g.slug)}">${g.isNew ? '<span class="pill">New</span>' : ''}${g.multiplayer ? '<span class="pill alt">Multiplayer</span>' : ''}
+${art(g)}<div class="body"><h3>${esc(g.title)}</h3><p>${esc(g.blurb)}</p><div class="meta">by ${esc(g.developer)}${mins ? ` · ${mins} min per player` : ''}</div></div></a>`;
+}
+
 function boardList(rows, label) {
   if (!rows.length) return `<p class="muted">No ${esc(label.toLowerCase())} yet this month. Be the first.</p>`;
   return `<ol class="board">${rows.map(r => `<li class="top${r.rank}"><span class="n">${r.rank}</span><span class="who"><a href="/u/${esc(r.player.id)}">${esc(r.player.name)}</a>${r.player.title ? `<small>${esc(r.player.title)}</small>` : ''}</span><span class="s">${r.score.toLocaleString('en-US')}</span></li>`).join('')}</ol>`;

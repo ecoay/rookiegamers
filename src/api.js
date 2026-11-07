@@ -4,6 +4,7 @@ import { signToken, verifyToken, TOKEN_TTL } from './tokens.js';
 import { gameEvent, submitScore, topScores, rankOf, fame, playNext, frontPage, sealIfDue } from './play.js';
 import * as dev from './dev.js';
 import { createShare } from './growth.js';
+import { deleteAccount } from './account.js';
 import { moneyV1, moneyDev } from './money-api.js';
 
 export const json = (data, status = 200, extra = {}) => {
@@ -160,6 +161,13 @@ export async function apiPortal(req, env, DB, url) {
   if (path === '/api/auth/signout' && method === 'POST') return json({ ok: true }, 200, { 'set-cookie': await signOut(DB, req) });
   if (!pid) return json({ error: 'Sign in first.', signin: true }, 401);
 
+  // Deleting the account is final. The body must say {"confirm":"DELETE"} so it can't happen by accident.
+  if (path === '/api/me/delete' && method === 'POST') {
+    const b = await readJSON(req);
+    if (b.confirm !== 'DELETE') return json({ error: 'Type DELETE to confirm.' }, 400);
+    const r = await deleteAccount(DB, pid);
+    return json(r, r.status, r.ok ? { 'set-cookie': await signOut(DB, req) } : {});
+  }
   if (path === '/api/me' && method === 'POST') {
     const b = await readJSON(req);
     const sets = [], vals = [];

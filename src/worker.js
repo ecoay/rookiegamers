@@ -1,6 +1,7 @@
 import { db, monthKey, prevMonth } from './db.js';
 import { emailVerify, socialStart, socialCallback, NETWORK_IDS } from './auth.js';
 import { EXTRA, extraStart, extraCallback, blueskyMetadata } from './social-extra.js';
+import { metaDeletion } from './account.js';
 import { jwks } from './tokens.js';
 import { apiV1, apiPortal, apiDev, json, CORS } from './api.js';
 import { mcp } from './mcp.js';
@@ -73,6 +74,7 @@ export default {
         if (EXTRA.includes(m[1])) return m[2] ? await extraCallback(DB, env, req, m[1]) : await extraStart(env, req, m[1]);
         return m[2] ? await socialCallback(DB, env, req, m[1]) : await socialStart(env, req, m[1]);
       }
+      if (path === '/auth/facebook/deletion' && req.method === 'POST') return await metaDeletion(DB, env, req, url.origin);
       if (path === '/auth/bluesky/client-metadata.json') return json(blueskyMetadata(url.origin));
 
       if ((m = path.match(/^\/hosted\/([a-z0-9-]{1,32})(?:\/(.*))?$/))) {

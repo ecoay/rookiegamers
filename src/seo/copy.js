@@ -1,6 +1,8 @@
 // Copy, meta and JSON-LD for the four new public pages and for the existing routes listed in
 // pages/COPY.md. Kept as data so pages.js/home.js just wire it into the shared layout().
 
+import { LEGAL_PAGES } from './legal.js';
+
 export const ORG = {
   '@type': 'Organization',
   '@id': 'https://rookiegamers.com/#org',
@@ -19,6 +21,8 @@ export const FOOTER_LINKS = [
   ['/dev', 'Publish'],
   ['/docs', 'SDK docs'],
   ['/hall-of-fame', 'Hall of Fame'],
+  ['/privacy', 'Privacy'],
+  ['/terms', 'Terms'],
 ];
 
 /* ---------- new pages ---------- */
@@ -220,6 +224,7 @@ export const FAQ_PAGE = {
 };
 
 export const NEW_PAGES = {
+  ...LEGAL_PAGES,
   '/about': ABOUT_PAGE,
   '/creators': CREATORS_PAGE,
   '/ai': AI_PAGE,

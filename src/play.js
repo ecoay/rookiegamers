@@ -1,5 +1,6 @@
 import { now, newId, monthKey, prevMonth, monthLabel, DAY, liveGames, gameView } from './db.js';
-import { settleReferral, shareStats } from './growth.js';
+import { settleReferral, shareStats, grantGems } from './growth.js';
+import { playGems } from './icons.js';
 
 // Plays, leaderboards, the Hall of Fame and "play next".
 
@@ -32,7 +33,7 @@ export async function gameEvent(DB, game, { type, play, ref, playerId }) {
     const add = Math.max(0, Math.min(t - row.last_at, 5 * 60 * 1000, MAX_PLAY_MS - row.ms));
     await DB.prepare('UPDATE plays SET ms = ms + ?, last_at = ? WHERE id = ?').bind(add, t, row.id).run();
     const pid = playerId || row.player_id;
-    if (pid && add > 0) { await addXP(DB, pid, Math.floor(add / 60000 * XP_PER_MINUTE)); await settleReferral(DB, pid); }
+    if (pid && add > 0) { await addXP(DB, pid, Math.floor(add / 60000 * XP_PER_MINUTE)); await settleReferral(DB, pid); await playGems(DB, pid, grantGems); }
     return { play: row.id, ms: row.ms + add };
   }
   return { error: 'Unknown event.' };

@@ -5,6 +5,7 @@ import { gameEvent, submitScore, topScores, rankOf, fame, playNext, frontPage, s
 import * as dev from './dev.js';
 import { createShare } from './growth.js';
 import { deleteAccount } from './account.js';
+import { ICONS, EARN, iconURI, ownedIcons, claimEarned, buyIcon, equipIcon } from './icons.js';
 import { moneyV1, moneyDev } from './money-api.js';
 
 export const json = (data, status = 200, extra = {}) => {
@@ -161,6 +162,21 @@ export async function apiPortal(req, env, DB, url) {
   if (path === '/api/auth/signout' && method === 'POST') return json({ ok: true }, 200, { 'set-cookie': await signOut(DB, req) });
   if (!pid) return json({ error: 'Sign in first.', signin: true }, 401);
 
+  // The Diamond Shop: platform icons bought with gems, or earned by milestones.
+  if (path === '/api/shop' && method === 'GET') {
+    const p = await getPlayer(DB, pid);
+    await claimEarned(DB, p);
+    const owned = await ownedIcons(DB, pid);
+    return json({ gems: p.gems, equipped: p.icon || null, icons: ICONS.map(i => ({ id: i.id, name: i.name, price: i.price || null, earn: i.earn ? EARN[i.earn] : null, owned: !!owned[i.id], image: iconURI(i) })) });
+  }
+  if (path === '/api/shop/buy' && method === 'POST') {
+    const r = await buyIcon(DB, pid, String((await readJSON(req)).icon || ''));
+    return json(r, r.status);
+  }
+  if (path === '/api/shop/equip' && method === 'POST') {
+    const r = await equipIcon(DB, pid, String((await readJSON(req)).icon || ''));
+    return json(r, r.status);
+  }
   // Deleting the account is final. The body must say {"confirm":"DELETE"} so it can't happen by accident.
   if (path === '/api/me/delete' && method === 'POST') {
     const b = await readJSON(req);

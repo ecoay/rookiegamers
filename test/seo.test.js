@@ -106,7 +106,7 @@ test('/robots.txt is text/plain and matches the bundled fixture, with a Sitemap 
   assert.match(ROBOTS_TXT, /^Sitemap: https:\/\/rookiegamers\.com\/sitemap\.xml$/m);
 });
 
-test('/sitemap.xml is application/xml, valid, and has exactly 13 <loc> entries', async () => {
+test('/sitemap.xml is application/xml, valid, and has exactly 14 <loc> entries', async () => {
   const env = await setup();
   const res = await get(env, '/sitemap.xml');
   assert.equal(res.status, 200);
@@ -114,7 +114,7 @@ test('/sitemap.xml is application/xml, valid, and has exactly 13 <loc> entries',
   const xml = await res.text();
   assert.equal(xml, SITEMAP_XML);
   const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map(m => m[1]);
-  assert.equal(locs.length, 13);
+  assert.equal(locs.length, 14);
   for (const loc of locs) assert.match(loc, /^https:\/\/rookiegamers\.com/);
   assert.ok(!locs.includes('https://rookiegamers.com/signin'));
 });

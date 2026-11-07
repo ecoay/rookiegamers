@@ -3,6 +3,9 @@
 // pieces of art (public/img/hero.webp and web3-strip.webp) are the only images; everything else
 // is HTML and CSS. Filtering and search run in the browser over the games on the page.
 
+import { canonical, ldJSON } from './seo/site.js';
+import { FOOTER_LINKS, HOME_JSONLD } from './seo/copy.js';
+
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const data = v => JSON.stringify(v).replace(/</g, '\\u003c');
 
@@ -86,11 +89,11 @@ export function homePage({ me, games, site }) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${t}</title><meta name="description" content="${esc(desc)}">
 <meta property="og:site_name" content="RookieGamers"><meta property="og:title" content="${t}"><meta property="og:description" content="${esc(desc)}"><meta property="og:type" content="website">
-<meta property="og:url" content="${esc(site)}/"><link rel="canonical" href="${esc(site)}/"><meta property="og:image" content="${esc(site)}/img/og.jpg"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="${esc(site)}/img/og.jpg">
+<meta property="og:url" content="${esc(site)}/"><link rel="canonical" href="${esc(canonical('/'))}"><meta property="og:image" content="${esc(site)}/img/og.jpg"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="${esc(site)}/img/og.jpg">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bangers&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="preload" as="image" href="/img/hero.webp" imagesrcset="/img/hero-sm.webp 1086w, /img/hero.webp 2172w" imagesizes="(max-width: 900px) 100vw, calc(100vw - 120px)">
-<link rel="stylesheet" href="/home.css"></head><body class="rg-home">
+<link rel="stylesheet" href="/home.css">${HOME_JSONLD.map(block => `<script type="application/ld+json">${ldJSON(block)}</script>`).join('')}</head><body class="rg-home">
 <aside class="rail" aria-label="Sections">
 ${rail.map(([h, l, ic, on]) => `<a href="${esc(h)}"${on ? ' class="on" aria-current="page"' : ''}>${icon(ic)}<span>${l}</span></a>`).join('')}
 <a class="w3" href="#web3">${icon('link')}<span>WEB3<br>ARCADE</span></a>
@@ -108,6 +111,8 @@ ${me ? `<a class="b me" href="/u/${esc(me.id)}"><img src="${esc(me.avatar)}" alt
 <img src="/img/hero.webp" srcset="/img/hero-sm.webp 1086w, /img/hero.webp 2172w" sizes="(max-width: 900px) 100vw, calc(100vw - 120px)" alt="RookieGamers. Play something weird. Indie games. Instant play." width="2172" height="724">
 <div class="cta"><a class="b lime big" href="#trending">${icon('play')}<span>Explore Games</span>${icon('chev', 'sm')}</a><a class="b out big" href="/dev">${icon('upload')}<span>Submit a Game</span></a></div>
 </section>
+
+<p class="tagline">Free indie web games, made with AI or without it. <a href="/about">Why we exist</a></p>
 
 <nav class="chips" aria-label="Categories">
 ${(games.some(g => g.featured) ? [CATEGORIES[0], ['featured', 'Featured', 'sparkles'], ...CATEGORIES.slice(1)] : CATEGORIES).map(([k, l, ic], i) => `<button type="button" data-cat="${k}"${i === 0 ? ' class="on" aria-pressed="true"' : ' aria-pressed="false"'}>${ic ? icon(ic) : ''}${l}</button>`).join('')}
@@ -130,7 +135,7 @@ ${(games.some(g => g.featured) ? [CATEGORIES[0], ['featured', 'Featured', 'spark
 <a class="b lime" href="#trending" data-goto="web3">${icon('link')}<span>Explore Web3</span>${icon('chev', 'sm')}</a></div></div>
 </section>
 
-<footer class="ft"><span>RookieGamers</span><a href="/hall-of-fame">Hall of Fame</a><a href="/docs">SDK docs</a><a href="/dev">Publish a game</a><span>Accounts are for players 13 and up. Wallets are optional and for players 18 and up.</span></footer>
+<footer class="ft"><span>RookieGamers</span>${FOOTER_LINKS.map(([h, l]) => `<a href="${h}">${l}</a>`).join('')}<span>Accounts are for players 13 and up. Wallets are optional and for players 18 and up.</span></footer>
 </div>
 
 <dialog class="dlg" id="walletDlg"><h3>Wallets are coming</h3><p>Every game on RookieGamers plays without a wallet. Connecting one will be optional, for players 18 and up, and only unlocks coin discounts and onchain games.</p><button class="b lime" type="button" id="walletOk">Got it</button></dialog>

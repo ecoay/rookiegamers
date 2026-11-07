@@ -7,6 +7,8 @@ import { mintFor } from './api.js';
 import { devMoneySection } from './money-api.js';
 import SDK_DOCS from '../docs/SDK.md';
 import { homePage } from './home.js';
+import { canonical, ldJSON } from './seo/site.js';
+import { FOOTER_LINKS, NEW_PAGES, DEV_JSONLD, DOCS_JSONLD, HALL_OF_FAME_JSONLD, PLAY_PAGES } from './seo/copy.js';
 
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const html = (body, status = 200, headers = {}) => new Response(body, { status, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', ...headers } });
@@ -16,21 +18,22 @@ const data = v => JSON.stringify(v).replace(/</g, '\\u003c');
 const GEM = '<svg class="gem" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1h8l4 5-8 9-8-9z" fill="currentColor"/><path d="M0 6h16M4 1l4 14M12 1 8 15" stroke="rgba(0,0,0,.25)" fill="none"/></svg>';
 const gemCount = n => `<span class="gems" title="Gems">${GEM}${Number(n || 0).toLocaleString('en-US')}</span>`;
 
-function layout({ title, desc, me, active, body, url, scripts = '', og = {} }) {
-  const t = title ? `${title} · RookieGamers` : 'RookieGamers · free web games, one account';
+function layout({ title, titleFull, desc, me, active, body, url, scripts = '', og = {}, canonicalPath, jsonld, robots }) {
+  const t = titleFull || (title ? `${title} · RookieGamers` : 'RookieGamers · free web games, one account');
   const ogTitle = og.title || t, ogDesc = og.desc || desc || 'Play free web games from indie developers, with one account, one level and one Hall of Fame across every game.';
   const nav = [['/', 'Games'], ['/hall-of-fame', 'Hall of Fame'], ['/dev', 'Publish'], ['/docs', 'SDK']];
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(t)}</title><meta name="description" content="${esc(desc || 'Play free web games from indie developers, with one account, one level and one Hall of Fame across every game.')}">
+${robots ? `<meta name="robots" content="${esc(robots)}">` : ''}
 <meta property="og:site_name" content="RookieGamers"><meta property="og:title" content="${esc(ogTitle)}"><meta property="og:description" content="${esc(ogDesc)}"><meta property="og:type" content="website">
-${url ? `<meta property="og:url" content="${esc(url)}"><link rel="canonical" href="${esc(url)}">` : ''}${og.image ? `<meta property="og:image" content="${esc(og.image)}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="${esc(og.image)}">` : '<meta name="twitter:card" content="summary">'}
+${url ? `<meta property="og:url" content="${esc(url)}">` : ''}${canonicalPath ? `<link rel="canonical" href="${esc(canonical(canonicalPath))}">` : ''}${og.image ? `<meta property="og:image" content="${esc(og.image)}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="${esc(og.image)}">` : '<meta name="twitter:card" content="summary">'}
 <meta name="twitter:title" content="${esc(ogTitle)}"><meta name="twitter:description" content="${esc(ogDesc)}">
-<link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/site.css"></head><body>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/site.css">${(jsonld || []).map(block => `<script type="application/ld+json">${ldJSON(block)}</script>`).join('')}</head><body>
 <header class="top"><div class="wrap"><a class="logo" href="/"><b>RG</b>RookieGamers</a>
 <nav class="main">${nav.map(([h, l]) => `<a href="${h}"${active === h ? ' aria-current="page"' : ''}>${l}</a>`).join('')}</nav>
 ${me ? `<a class="me" href="/u/${esc(me.id)}"><img src="${esc(me.avatar)}" alt="">${esc(me.name)} <span class="muted">Lv ${me.level}</span>${gemCount(me.gems)}</a>` : `<a class="btn small" href="/signin?next=${encodeURIComponent(active || '/')}" id="signinLink">Sign in</a>`}
 </div></header><main><div class="wrap">${body}</div></main>
-<footer class="foot"><div class="wrap"><span>RookieGamers</span><a href="/docs">SDK docs</a><a href="/dev">Publish a game</a><a href="/hall-of-fame">Hall of Fame</a><span>Accounts are for players 13 and up.</span></div></footer>
+<footer class="foot"><div class="wrap"><span>RookieGamers</span>${FOOTER_LINKS.map(([h, l]) => `<a href="${h}">${l}</a>`).join('')}<span>Accounts are for players 13 and up.</span></div></footer>
 ${scripts}</body></html>`;
 }
 
@@ -115,7 +118,9 @@ ${more.length ? `<div class="panel"><h3>Play next</h3><div class="shelf" style="
 <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="dlgGo" type="button">Sign in</button><button class="btn ghost" id="dlgNo" type="button">Keep playing as a guest</button></div></dialog>
 ${shareDialog(me)}`;
   const boot = { game: v.slug, title: v.title, origins: frame.origins, ref, signedIn: !!me };
-  return html(layout({ title: g.title, desc: g.blurb, me, active: '/play/' + g.slug, body, url: siteURL(env) + '/play/' + g.slug,
+  const seo = PLAY_PAGES[g.slug];
+  return html(layout({ title: g.title, desc: seo ? seo.description : g.blurb, me, active: '/play/' + g.slug, body, url: siteURL(env) + '/play/' + g.slug,
+    canonicalPath: '/play/' + g.slug, jsonld: seo && seo.jsonld,
     og: { title: `Play ${g.title} free on RookieGamers`, image: coverURL(g) },
     scripts: `<script>window.RG_PLAY=${data(boot)}</script><script src="/portal.js"></script>` }));
 }
@@ -152,7 +157,7 @@ async function hallOfFame(DB, req, env) {
   const body = `<h1>Hall of Fame</h1><p class="lede">Every month, the top 3 players in every game are kept here forever. Champions wear their title in every game on RookieGamers.</p>
 ${Object.keys(months).length ? Object.entries(months).map(([m, games]) => `<section class="fame-month"><h2>${esc(monthLabel(m))}</h2><div class="fame-grid">${Object.entries(games).map(([slug, g]) => `<div class="panel"><h3><a href="/play/${esc(slug)}">${esc(g.title)}</a></h3>${boardList(g.rows, 'champions')}</div>`).join('')}</div></section>`).join('')
     : `<div class="empty">The first champions are crowned on ${esc(monthLabel(monthKey()))}'s last day. Go set a score.</div>`}`;
-  return html(layout({ title: 'Hall of Fame', me, active: '/hall-of-fame', body, url: siteURL(env) + '/hall-of-fame' }));
+  return html(layout({ title: 'Hall of Fame', me, active: '/hall-of-fame', body, url: siteURL(env) + '/hall-of-fame', canonicalPath: '/hall-of-fame', jsonld: HALL_OF_FAME_JSONLD }));
 }
 
 const NET_NAMES = { scenespot: 'SceneSpot', google: 'Google', discord: 'Discord', x: 'X', twitch: 'Twitch', github: 'GitHub' };
@@ -226,7 +231,7 @@ const f=document.getElementById('emailForm');if(f)f.onsubmit=async e=>{e.prevent
 const r=await fetch('/api/auth/email',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:d.get('email'),age:age.checked,next:${data(after)}})});const j=await r.json().catch(()=>({}));b.disabled=false;
 document.getElementById('emailMsg').innerHTML=r.ok?'<div class="note ok">Check your inbox for a sign-in link. '+(j.devLink?'<a href="'+j.devLink+'" id="devLink">Dev sign-in link</a>':'')+'</div>':'<div class="note err"></div>';if(!r.ok)document.querySelector('#emailMsg .err').textContent=j.error||'Something went wrong.'};
 </script>`;
-  return html(layout({ title: 'Sign in', me, body, scripts: script }));
+  return html(layout({ title: 'Sign in', me, body, scripts: script, robots: 'noindex,follow' }));
 }
 
 // After a sign-in that started in a popup, tell the page that opened it, then close.
@@ -274,20 +279,20 @@ async function devPage(DB, req, env, url) {
 <div class="panel"><h3>Codex</h3><p class="muted">In <code>~/.codex/config.toml</code>:</p><pre><code>[mcp_servers.rookiegamers]
 url = "${esc(site)}/mcp"
 bearer_token_env_var = "ROOKIEGAMERS_API_KEY"</code></pre></div>
-<div class="panel"><h3>Grok</h3><p class="muted">Add a remote MCP tool to an xAI API call:</p><pre><code>{ "type": "mcp",
+<div class="panel"><h3>xAI API (Grok)</h3><p class="muted">Add a remote MCP tool to an xAI API call:</p><pre><code>{ "type": "mcp",
   "server_url": "${esc(site)}/mcp",
   "server_label": "rookiegamers",
   "authorization": "Bearer rgk_..." }</code></pre></div>
 <div class="panel"><h3>CLI</h3><pre><code>curl -O ${esc(site)}/rg.mjs
 node rg.mjs init my-game
 node rg.mjs deploy ./my-game --game my-game</code></pre></div></div>`;
-  if (!me) return html(layout({ title: 'Publish', me, active: '/dev', body: `<h1>Publish your game on RookieGamers</h1><p class="lede">Every game on RookieGamers shares one player base. Your players find other games, and their players find yours. AI-built games are welcome.</p><a class="btn" href="/signin?next=${encodeURIComponent('/dev' + (invite ? '?invite=' + invite : ''))}">Sign in to start</a>${agents}` }));
+  if (!me) return html(layout({ title: 'Publish', me, active: '/dev', body: `<h1>Publish your game on RookieGamers</h1><p class="lede">Every game on RookieGamers shares one player base. Your players find other games, and their players find yours. AI-built games are welcome.</p><a class="btn" href="/signin?next=${encodeURIComponent('/dev' + (invite ? '?invite=' + invite : ''))}">Sign in to start</a>${agents}`, canonicalPath: '/dev', jsonld: DEV_JSONLD }));
   const isDev = await isDeveloper(DB, me.id);
   if (!isDev) {
     const open = env.OPEN_DEVELOPERS === '1';
     const body = `<h1>Become a developer</h1><p class="lede">${open ? 'Publishing is open. One click and you can make API keys and publish games.' : 'Publishing is invite-only while we start. Paste your invite code, or open the invite link you were sent.'}</p>
 <form class="form" id="joinForm">${open ? '' : `<input name="invite" value="${esc(invite)}" placeholder="inv_..." aria-label="Invite code" required>`}<button class="btn" type="submit">Become a developer</button><div id="joinMsg"></div></form>${agents}`;
-    return html(layout({ title: 'Publish', me, active: '/dev', body, scripts: `<script>document.getElementById('joinForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);const r=await fetch('/api/dev/join',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({invite:f.get('invite')})});const j=await r.json();if(r.ok)location.href='/dev';else{const m=document.getElementById('joinMsg');m.innerHTML='<div class="note err"></div>';m.firstChild.textContent=j.error}}</script>` }));
+    return html(layout({ title: 'Publish', me, active: '/dev', body, canonicalPath: '/dev', jsonld: DEV_JSONLD, scripts: `<script>document.getElementById('joinForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);const r=await fetch('/api/dev/join',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({invite:f.get('invite')})});const j=await r.json();if(r.ok)location.href='/dev';else{const m=document.getElementById('joinMsg');m.innerHTML='<div class="note err"></div>';m.firstChild.textContent=j.error}}</script>` }));
   }
   const [games, keys] = await Promise.all([myGames(DB, me.id), listKeys(DB, me.id)]);
   const cash = await devMoneySection(DB, env, me.id, games);
@@ -302,7 +307,7 @@ document.getElementById('keyForm').onsubmit=async e=>{e.preventDefault();const f
 m.innerHTML=r.ok?'<div class="note ok">Your new key (shown once, keep it secret): <code id="newKey"></code></div>':'<div class="note err"></div>';if(r.ok)document.getElementById('newKey').textContent=j.key;else m.firstChild.textContent=j.error};
 document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{await fetch('/api/dev/keys',{method:'DELETE',headers:{'content-type':'application/json'},body:JSON.stringify({prefix:b.dataset.del})});location.reload()});
 </script>`;
-  return html(layout({ title: 'Developer', me, active: '/dev', body, scripts: script }));
+  return html(layout({ title: 'Developer', me, active: '/dev', body, canonicalPath: '/dev', jsonld: DEV_JSONLD, scripts: script }));
 }
 
 // Just enough Markdown for docs/SDK.md: headings, paragraphs, lists, tables, code.
@@ -335,11 +340,20 @@ export function markdown(md) {
 async function docs(DB, req, env) {
   const me = await viewer(DB, req);
   const md = SDK_DOCS.replaceAll('https://rookiegamers.com', siteURL(env));
-  return html(layout({ title: 'SDK docs', me, active: '/docs', body: `<article class="doc">${markdown(md)}</article>`, url: siteURL(env) + '/docs' }));
+  return html(layout({ title: 'SDK docs', me, active: '/docs', body: `<article class="doc">${markdown(md)}</article>`, url: siteURL(env) + '/docs', canonicalPath: '/docs', jsonld: DOCS_JSONLD }));
 }
 
 function notFound(me, msg = 'Nothing here.') {
   return html(layout({ me, title: 'Not found', body: `<h1>${esc(msg)}</h1><p class="lede"><a href="/">Find a game to play</a>.</p>` }), 404);
+}
+
+// /about, /creators, /ai, /faq: ordinary static pages, copy and JSON-LD from seo/copy.js.
+async function staticPage(DB, req, env, path) {
+  const page = NEW_PAGES[path];
+  const me = await viewer(DB, req);
+  const body = `<article class="doc"><h1>${esc(page.h1)}</h1>${markdown(page.body)}</article>`;
+  return html(layout({ titleFull: page.title, desc: page.description, me, active: path, body,
+    url: siteURL(env) + path, canonicalPath: path, jsonld: page.jsonld }));
 }
 
 export async function page(path, url, env, DB, req) {
@@ -362,6 +376,7 @@ async function route(path, url, env, DB, req) {
   if (path === '/sdk/connect') return connect(DB, req, env, url);
   if (path === '/dev') return devPage(DB, req, env, url);
   if (path === '/docs') return docs(DB, req, env);
+  if (NEW_PAGES[path]) return staticPage(DB, req, env, path);
   return null;
 }
 

@@ -203,6 +203,6 @@ test('public SEO copy makes no sign-in on/off claim (deployment-dependent)', asy
   for (const p of ['/about', '/faq', '/llms.txt', '/llms-full.txt']) {
     const t = await (await get(env, p)).text();
     assert.doesNotMatch(t, /sign-in is not switched on/i, p);
-    if (p !== '/llms.txt') assert.match(t, /played (free )?as a guest/, p);
+    assert.doesNotMatch(t, /as a guest|never need (one|an account)|guests can/i, p);
   }
 });

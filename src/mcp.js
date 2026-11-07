@@ -2,6 +2,7 @@ import * as dev from './dev.js';
 import { frontPage, topScores } from './play.js';
 import { getGame, monthKey } from './db.js';
 import { starterFiles } from './template.js';
+import * as money from './money.js';
 import SDK_DOCS from '../docs/SDK.md';
 
 // A Model Context Protocol server (Streamable HTTP, stateless JSON responses) at /mcp. Claude Code,
@@ -32,6 +33,7 @@ const GAME_FIELDS = {
   scoreMode: { type: 'string', enum: ['best', 'sum'], description: '"best": keep each player\'s best (default). "sum": add up points; only the game\'s server can report.' },
   maxScore: { type: 'number', description: 'Optional cap on scores sent from the browser.' },
   coin: { type: 'boolean', description: 'Opt this game into the RookieGamers coin (Solana) as a discounted way to pay. Off by default.' },
+  wallet: { type: 'string', enum: ['none', 'optional', 'required'], description: 'How the game uses crypto wallets. "none" (default for most games), "optional" (wallet unlocks extras), or "required" (an onchain game, listed in the Web3 Arcade, 18+ players only).' },
   payoutWallet: str('Solana address that receives the developer\'s 40% of coin payments.'),
 };
 
@@ -85,7 +87,29 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: { slug: SLUG }, required: ['slug'] }, run: (a, ctx) => dev.stats(ctx.DB, ctx.pid, a.slug) },
   { name: 'create_server_key', description: 'Make a new secret key for the game\'s own server to report trusted scores (replaces the old one, shown once). Never put it in browser code.',
     inputSchema: { type: 'object', properties: { slug: SLUG }, required: ['slug'] }, run: async (a, ctx) => ({ key: await dev.rotateServerKey(ctx.DB, ctx.pid, a.slug), docs: `${ctx.site}/docs#games-with-a-server` }) },
+  { name: 'set_product', description: 'Add or change a product in the game\'s store: a one-time item or a monthly pass. Give a cash price in cents (sold through RookieGamers\' Stripe; you keep 90% after fees and tax), a number of rewarded ads that unlocks it, or both. In the game, sell it with rg.store.buy(sku), unlock it with rg.store.unlock(sku), and check it with rg.store.has(sku).',
+    inputSchema: { type: 'object', required: ['slug', 'sku', 'title'], properties: { slug: SLUG, sku: str('Product id, like "skin.gold" or "season-pass".'), title: str('Name players see.'), blurb: str('One line about it.'),
+      kind: { type: 'string', enum: ['item', 'pass'], description: '"item": bought once, kept for good. "pass": renews monthly.' }, priceCents: { type: 'number', description: 'Cash price in US cents (99 to 50000). Leave out for ads-only.' },
+      adUnlock: { type: 'number', description: 'Rewarded ads that unlock it (0 to 20). Needs the game in the ad loop.' }, adDays: { type: 'number', description: 'Passes only: days an ad unlock lasts (default 1).' },
+      active: { type: 'boolean' } } },
+    run: async (a, ctx) => { const g = await myGame(ctx, a.slug); const { slug, sku, ...rest } = a; return money.putProduct(ctx.DB, g, sku, rest); } },
+  { name: 'list_products', description: 'List the products in a game\'s store.', inputSchema: { type: 'object', properties: { slug: SLUG }, required: ['slug'] },
+    run: async (a, ctx) => money.listProducts(ctx.DB, await myGame(ctx, a.slug), { all: true }) },
+  { name: 'request_ads', description: 'Put a live game in the RookieGamers ad loop and ask for paid ads. As soon as the developer accepts the ad terms, rg.ads.rewarded() and rg.ads.midgame() start showing other RookieGamers games\' clips, unpaid, and the developer\'s own clips run in other games the same way. RookieGamers then reviews the game for paid ads; once approved (monetized), sponsor and network ads fill in too and the developer keeps 70% of paid ad revenue. Show the developer these terms and pass agree: true only once they accept. Also shows the current status.',
+    inputSchema: { type: 'object', properties: { slug: SLUG, agree: { type: 'boolean', description: 'The developer accepts the ad terms (see the description). Ask them first.' }, formats: { type: 'array', items: { type: 'string', enum: ['rewarded', 'midgame'] } } }, required: ['slug'] },
+    run: async (a, ctx) => money.requestAds(ctx.DB, await myGame(ctx, a.slug), a) },
+  { name: 'game_money', description: 'Store sales, ad revenue, refunds and your share by month for one game, plus ad views and sales in the last 30 days.',
+    inputSchema: { type: 'object', properties: { slug: SLUG }, required: ['slug'] }, run: async (a, ctx) => money.gameMoney(ctx.DB, (await myGame(ctx, a.slug)).slug) },
+  { name: 'payout_status', description: 'Your balance (ready, clearing, paid) and whether Stripe payouts are set up.', inputSchema: { type: 'object', properties: {} },
+    run: async (a, ctx) => ({ ...(await money.payoutStatus(ctx.DB, ctx.pid)), setup: `${ctx.site}/dev/payouts/connect` }) },
 ];
+
+async function myGame(ctx, slug) {
+  const g = await getGame(ctx.DB, String(slug || ''));
+  if (!g) throw new dev.DevError(404, `There's no game called "${slug}".`);
+  if (g.owner_id !== ctx.pid) throw new dev.DevError(403, 'That game belongs to another developer.');
+  return g;
+}
 
 const rpc = (id, result) => ({ jsonrpc: '2.0', id, result });
 const rpcError = (id, code, message) => ({ jsonrpc: '2.0', id: id ?? null, error: { code, message } });
@@ -115,7 +139,7 @@ async function handle(msg, ctx) {
         const out = await tool.run(msg.params?.arguments || {}, ctx);
         return rpc(msg.id, { content: [{ type: 'text', text: typeof out === 'string' ? out : JSON.stringify(out, null, 2) }] });
       } catch (e) {
-        if (e instanceof dev.DevError) return rpc(msg.id, { isError: true, content: [{ type: 'text', text: e.message }] });
+        if (e instanceof dev.DevError || e instanceof money.MoneyError) return rpc(msg.id, { isError: true, content: [{ type: 'text', text: e.message }] });
         console.error('mcp tool', tool.name, e);
         return rpc(msg.id, { isError: true, content: [{ type: 'text', text: 'Something went wrong on RookieGamers. Try again.' }] });
       }

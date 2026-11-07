@@ -11,6 +11,8 @@
   const target = () => (B.origins[0] === 'null' ? '*' : null);
   function send(msg, origin) { frame.contentWindow.postMessage(Object.assign({ rg: 1 }, msg), target() || origin); }
   let gameOrigin = null;
+  let muted = false;
+  try { muted = localStorage.getItem('rg.muted') === '1'; } catch (e) { /* private mode */ }
 
   async function token() {
     try {
@@ -101,6 +103,51 @@
     });
     return sharing;
   }
+  // Ads run on the portal page, over the game, so the game never touches ad code.
+  let adOpen = null;
+  function showAd(o) {
+    if (adOpen) return adOpen;
+    adOpen = (async () => {
+      const a = await token();
+      const headers = { 'content-type': 'application/json' };
+      if (a.token) headers.authorization = 'Bearer ' + a.token;
+      let s = null;
+      try { s = await (await fetch('/api/v1/ads/start', { method: 'POST', headers, body: JSON.stringify({ game: B.game, format: o.format, sku: o.sku, mode: 'portal' }) })).json(); } catch (e) { s = null; }
+      if (!s || !s.fill) return { shown: false, rewarded: false, reason: s ? s.reason || s.error : 'offline', signin: !!(s && s.signin) };
+      return new Promise(resolve => {
+        const f = document.createElement('iframe');
+        f.src = s.url; f.title = 'Ad'; f.allow = 'autoplay';
+        f.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;border:0;z-index:2147483647;background:transparent';
+        const done = v => { window.removeEventListener('message', onMsg); clearTimeout(t); f.remove(); resolve(v); };
+        const onMsg = e => { if (e.origin === location.origin && e.source === f.contentWindow && e.data && e.data.rg === 1 && e.data.type === 'ad-done' && e.data.view === s.view) done(e.data.data || {}); };
+        window.addEventListener('message', onMsg);
+        const t = setTimeout(() => done({ shown: false, rewarded: false }), 3 * 60000);
+        document.body.appendChild(f);
+      });
+    })().finally(() => { adOpen = null; });
+    return adOpen;
+  }
+
+  // The clip banner: a promoted clip, or one from the free cross-promo rotation.
+  (async () => {
+    const box = document.getElementById('rgBanner');
+    if (!box) return;
+    try {
+      const r = await (await fetch('/api/v1/ads/banner?game=' + encodeURIComponent(B.game))).json();
+      if (!r.clip) return;
+      const h = document.createElement('h3');
+      const t = document.createElement('span'); t.textContent = r.clip.gameTitle;
+      const tag = document.createElement('span'); tag.className = 'muted small'; tag.textContent = r.promoted ? 'Sponsored' : 'Featured';
+      h.append(t, tag);
+      const v = document.createElement('video');
+      v.src = r.clip.url; v.muted = true; v.autoplay = true; v.loop = true; v.playsInline = true; v.setAttribute('playsinline', '');
+      v.style.cssText = 'width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:10px;background:#000;display:block';
+      const a = document.createElement('a'); a.className = 'btn small'; a.href = r.clip.play; a.textContent = 'Play ' + r.clip.gameTitle; a.style.marginTop = '10px';
+      box.append(h, v, a);
+      box.hidden = false;
+    } catch (e) { /* no banner */ }
+  })();
+
   const sb = document.getElementById('shareBtn');
   if (sb) sb.onclick = () => share({});
 
@@ -122,10 +169,11 @@
     const m = e.data;
     const answer = data => send({ re: m.id, data }, e.origin);
     switch (m.type) {
-      case 'hello': ready = true; return answer({ game: B.game, ref: B.ref, auth: await token() });
+      case 'hello': ready = true; return answer({ game: B.game, ref: B.ref, auth: await token(), muted });
       case 'token': return answer(await token());
       case 'login': return answer(await login());
       case 'share': return answer(await share(m.data));
+      case 'ad': return answer(await showAd(m.data || {}));
       case 'game':
         document.body.dataset.playing = m.data && m.data.event === 'start' ? '1' : '0';
         if (m.data && m.data.event === 'stop') setTimeout(refreshBoards, 1500);
@@ -163,6 +211,18 @@
     document.getElementById('bm').hidden = b.dataset.b !== 'm';
     document.getElementById('ba').hidden = b.dataset.b !== 'a';
   });
+  // The sound button. The portal can't reach into another site's frame to silence it, so it
+  // tells the game, and the SDK passes it on (rg.audio.onChange). Remembered on this browser.
+  const sound = document.getElementById('soundBtn');
+  function showSound() { if (sound) { sound.textContent = muted ? 'Muted' : 'Sound on'; sound.setAttribute('aria-pressed', String(muted)); } }
+  showSound();
+  if (sound) sound.onclick = () => {
+    muted = !muted;
+    try { localStorage.setItem('rg.muted', muted ? '1' : '0'); } catch (e) { /* private mode */ }
+    showSound();
+    if (ready && gameOrigin) send({ type: 'audio', data: { muted } }, gameOrigin);
+  };
+  document.addEventListener('keydown', e => { if (e.key === 'm' && e.altKey && sound) sound.click(); });
   const fs = document.getElementById('fs');
   if (fs) fs.onclick = () => (frame.requestFullscreen ? frame.requestFullscreen() : frame.webkitRequestFullscreen && frame.webkitRequestFullscreen());
 })();

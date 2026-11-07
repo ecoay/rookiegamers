@@ -4,7 +4,9 @@ import { getShare, isBot, countShareClick, validVia, referralStats, gemHistory, 
 import { frontPage, topScores, fame, sealIfDue } from './play.js';
 import { isDeveloper, myGames, listKeys, siteURL } from './dev.js';
 import { mintFor } from './api.js';
+import { devMoneySection } from './money-api.js';
 import SDK_DOCS from '../docs/SDK.md';
+import { homePage } from './home.js';
 
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const html = (body, status = 200, headers = {}) => new Response(body, { status, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', ...headers } });
@@ -59,12 +61,7 @@ function boardList(rows, label) {
 
 async function home(DB, req, env) {
   const [me, games] = await Promise.all([viewer(DB, req), frontPage(DB)]);
-  const body = `<section class="hero"><h1>Indie web games. <em>One account for all of them.</em></h1>
-<p class="lede">Play free games from indie developers. Your level, your titles and your Hall of Fame follow you into every game, and every game sends you to the next.</p></section>
-<h2>Play now</h2>${games.length ? `<div class="shelf">${games.map(card).join('')}</div>` : '<div class="empty">The first games are on their way.</div>'}
-<h2>Make games? Publish them here.</h2>
-<p class="lede">Build with your AI or by hand. Connect Claude Code, Codex or Grok to RookieGamers and publish straight from your editor. AI-built games are welcome: we judge games on whether they're fun. <a href="/dev">Start publishing</a>.</p>`;
-  return html(layout({ me, active: '/', body, url: siteURL(env) + '/' }));
+  return html(homePage({ me, games, site: siteURL(env) }));
 }
 
 function frameFor(env, g, url) {
@@ -107,11 +104,12 @@ async function play(DB, req, env, url, slug) {
   const more = others.filter(o => o.slug !== g.slug).slice(0, 4);
   const v = gameView(g);
   const body = `<div class="play"><div><div class="stage"><iframe id="game" src="${esc(src.href)}" title="${esc(g.title)}" sandbox="${frame.sandbox}" allow="autoplay; fullscreen; gamepad; clipboard-write; screen-wake-lock" allowfullscreen></iframe></div>
-<div class="stagebar"><div><h1>${esc(g.title)}</h1><span class="muted">by ${esc(g.developer)}</span></div><div class="acts"><button class="btn small" id="shareBtn" type="button">Share</button><button class="btn ghost small" id="fs" type="button">Full screen</button></div></div>
+<div class="stagebar"><div><h1>${esc(g.title)}</h1><span class="muted">by ${esc(g.developer)}</span></div><div class="acts"><button class="btn ghost small" id="soundBtn" type="button" aria-pressed="false" title="Mute or unmute the game">Sound on</button><button class="btn small" id="shareBtn" type="button">Share</button><button class="btn ghost small" id="fs" type="button">Full screen</button></div></div>
 <p class="muted">${esc(g.blurb)}</p></div>
 <aside class="side"><div class="panel"><h3><span>${esc(g.score_label)}</span><span class="tabs"><button type="button" data-b="m" aria-pressed="true">${esc(monthLabel(monthKey()))}</button><button type="button" data-b="a" aria-pressed="false">All time</button></span></h3>
 <div id="bm">${boardList(monthly, g.score_label)}</div><div id="ba" hidden>${boardList(alltime, g.score_label)}</div></div>
 <div class="panel"><h3>Hall of Fame</h3>${hall.length ? `<ol class="board">${hall.map(h => `<li class="top${h.rank}"><span class="n">${h.rank}</span><span class="who"><a href="/u/${esc(h.player.id)}">${esc(h.player.name)}</a><small>${esc(h.monthLabel)}</small></span><span class="s">${h.score.toLocaleString('en-US')}</span></li>`).join('')}</ol>` : '<p class="muted">At the end of each month the top 3 are kept here forever and earn a title shown across RookieGamers.</p>'}</div>
+<div class="panel banner" id="rgBanner" hidden></div>
 ${more.length ? `<div class="panel"><h3>Play next</h3><div class="shelf" style="grid-template-columns:repeat(2,minmax(0,1fr))">${more.map(card).join('')}</div></div>` : ''}</aside></div>
 <dialog class="signin" id="signinDlg"><h3 style="margin-top:0">Sign in to save your scores</h3><p class="muted">One RookieGamers account works in every game.</p>
 <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="dlgGo" type="button">Sign in</button><button class="btn ghost" id="dlgNo" type="button">Keep playing as a guest</button></div></dialog>
@@ -292,12 +290,14 @@ node rg.mjs deploy ./my-game --game my-game</code></pre></div></div>`;
     return html(layout({ title: 'Publish', me, active: '/dev', body, scripts: `<script>document.getElementById('joinForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);const r=await fetch('/api/dev/join',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({invite:f.get('invite')})});const j=await r.json();if(r.ok)location.href='/dev';else{const m=document.getElementById('joinMsg');m.innerHTML='<div class="note err"></div>';m.firstChild.textContent=j.error}}</script>` }));
   }
   const [games, keys] = await Promise.all([myGames(DB, me.id), listKeys(DB, me.id)]);
+  const cash = await devMoneySection(DB, env, me.id, games);
   const body = `<h1>Developer</h1><p class="lede">Make an API key, connect your AI or the CLI, and publish. Games go live as soon as they pass the checks.</p>
 <h2>Your games</h2>${games.length ? `<table class="t"><tr><th>Game</th><th>Kind</th><th>Status</th><th>Version</th></tr>${games.map(g => `<tr><td>${g.live ? `<a href="/play/${esc(g.slug)}">${esc(g.title)}</a>` : esc(g.title)}</td><td>${esc(g.kind)}</td><td>${g.live ? 'Live' : 'Not published'}</td><td>${esc(g.version || '-')}</td></tr>`).join('')}</table>` : '<p class="muted">No games yet. Create one with your agent, the CLI, or the API.</p>'}
 <h2>API keys</h2><form class="form" id="keyForm" style="flex-direction:row;max-width:520px"><input name="label" placeholder="Key name, like laptop or claude" aria-label="Key name"><button class="btn" type="submit">Make key</button></form><div id="keyMsg" style="margin:10px 0"></div>
 ${keys.length ? `<table class="t"><tr><th>Name</th><th>Key</th><th>Last used</th><th></th></tr>${keys.map(k => `<tr><td>${esc(k.label)}</td><td><code>${esc(k.prefix)}...</code></td><td>${k.used_at ? new Date(k.used_at).toISOString().slice(0, 10) : 'never'}</td><td><button class="btn ghost small" data-del="${esc(k.prefix)}" type="button">Delete</button></td></tr>`).join('')}</table>` : ''}
+${cash.body}
 ${agents}<h2>Docs</h2><p><a href="/docs">The SDK and developer API reference</a>.</p>`;
-  const script = `<script>
+  const script = cash.script + `<script>
 document.getElementById('keyForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);const r=await fetch('/api/dev/keys',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({label:f.get('label')})});const j=await r.json();const m=document.getElementById('keyMsg');
 m.innerHTML=r.ok?'<div class="note ok">Your new key (shown once, keep it secret): <code id="newKey"></code></div>':'<div class="note err"></div>';if(r.ok)document.getElementById('newKey').textContent=j.key;else m.firstChild.textContent=j.error};
 document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{await fetch('/api/dev/keys',{method:'DELETE',headers:{'content-type':'application/json'},body:JSON.stringify({prefix:b.dataset.del})});location.reload()});

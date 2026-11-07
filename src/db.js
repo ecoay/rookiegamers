@@ -2,6 +2,7 @@
 // The schema is applied on first use, so a fresh database needs no migration step.
 
 import { SEED_GAMES } from './catalog.js';
+import { migrateMoney } from './money.js';
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS players (id TEXT PRIMARY KEY, name TEXT NOT NULL, hue INTEGER NOT NULL DEFAULT 0, email TEXT UNIQUE,
@@ -73,12 +74,17 @@ const COLUMNS = [
   'ALTER TABLE players ADD COLUMN gems INTEGER NOT NULL DEFAULT 0',
   'ALTER TABLE players ADD COLUMN referred_by TEXT',
   'ALTER TABLE players ADD COLUMN ref_paid INTEGER NOT NULL DEFAULT 0',
+  // wallet: 'none', 'optional' or 'required' (an onchain game). Unset means optional for coin games.
+  'ALTER TABLE games ADD COLUMN wallet TEXT',
+  // featured_at: set by the portal (admin) to feature a game at the top of the home page. Null is not featured.
+  'ALTER TABLE games ADD COLUMN featured_at INTEGER',
 ];
 
 export async function migrate(DB) {
   await DB.batch(SCHEMA.map(s => DB.prepare(s)));
   for (const c of COLUMNS) { try { await DB.prepare(c).run(); } catch (e) { if (!/duplicate column/i.test(String(e && e.message))) throw e; } }
   await DB.prepare('CREATE INDEX IF NOT EXISTS players_referred ON players(referred_by)').run();
+  await migrateMoney(DB);
   const t = now();
   await DB.batch(SEED_GAMES.map(g => DB.prepare(
     `INSERT OR IGNORE INTO games (slug, title, kind, url, origins, developer, blurb, tags, color, devices, multiplayer, score_label, score_mode, score_order, max_score, live, released_at, created_at)
@@ -140,7 +146,7 @@ export function gameView(g) {
   return {
     slug: g.slug, title: g.title, kind: g.kind, url: g.url, origins: safeJSON(g.origins, []), developer: g.developer, blurb: g.blurb,
     tags: safeJSON(g.tags, []), cover: g.cover, color: g.color, devices: g.devices, multiplayer: !!g.multiplayer,
-    scoreLabel: g.score_label, scoreMode: g.score_mode, scoreOrder: g.score_order, coin: !!g.coin, releasedAt: g.released_at,
+    scoreLabel: g.score_label, scoreMode: g.score_mode, scoreOrder: g.score_order, coin: !!g.coin, wallet: g.wallet || (g.coin ? 'optional' : 'none'), featured: !!g.featured_at, releasedAt: g.released_at,
   };
 }
 

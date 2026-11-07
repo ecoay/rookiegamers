@@ -6,6 +6,8 @@ import { mcp } from './mcp.js';
 import { page, notFoundPage } from './pages.js';
 import { archiveMonth } from './play.js';
 import { siteURL, contentType } from './dev.js';
+import { stripeWebhook, moneyPage } from './money-api.js';
+import { monthlyMoney } from './money.js';
 
 // Routes for rookiegamers.com: the portal pages, the SDK API (/api/v1), the developer API
 // (/api/dev), the MCP server (/mcp), and hosted game files (on GAMES_HOST, or /hosted/ locally).
@@ -50,7 +52,8 @@ export default {
       if (path === '/.well-known/jwks.json') return json(await jwks(DB), 200, { ...CORS, 'cache-control': 'public, max-age=300' });
       if (path === '/mcp') return mcp(req, env, DB, siteURL(env));
       if (path.startsWith('/api/v1/') || path === '/api/v1') return await apiV1(req, env, DB, url);
-      if (path.startsWith('/api/dev/games')) return await apiDev(req, env, DB, url);
+      if (path.startsWith('/api/dev/games') || path.startsWith('/api/dev/payouts')) return await apiDev(req, env, DB, url);
+      if (path === '/stripe/webhook') return await stripeWebhook(req, env, DB);
       if (path.startsWith('/api/admin/')) {
         const tok = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
         if (!env.ADMIN_TOKEN || !timingSafeEqual(tok, env.ADMIN_TOKEN)) return json({ error: 'Admin only.' }, 401);
@@ -73,6 +76,8 @@ export default {
         return out;
       }
 
+      const mp = await moneyPage(path, url, env, DB, req);
+      if (mp) return mp;
       const res = await page(path, url, env, DB, req);
       if (res) return res;
     } catch (e) {
@@ -96,6 +101,7 @@ export default {
   // Just after midnight UTC on the 1st, seal last month into the Hall of Fame.
   async scheduled(event, env, ctx) {
     const DB = await Promise.resolve(db(env)).catch(() => null);
-    if (DB) ctx.waitUntil(archiveMonth(DB, prevMonth(monthKey())));
+    // Then close last month's sponsor ads and pay developers.
+    if (DB) ctx.waitUntil(archiveMonth(DB, prevMonth(monthKey())).then(() => monthlyMoney(DB, env, prevMonth(monthKey()))));
   },
 };

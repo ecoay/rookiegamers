@@ -135,6 +135,7 @@ export async function playNext(DB, fromSlug, playerId, rand = Math.random) {
     let w = 1 + Math.min(4, (stats[g.slug]?.perPlayer || 0) / 600000); // up to +4 for 40 min per player
     if (!tried.has(g.slug)) w *= 3;
     if (now() - g.released_at < NEW_RELEASE) w *= 2;
+    if (g.featured_at) w *= 2;
     return w;
   });
   let r = rand() * weights.reduce((a, b) => a + b, 0);
@@ -153,8 +154,8 @@ export async function engagement(DB) {
 export async function frontPage(DB) {
   const [games, stats] = await Promise.all([liveGames(DB), engagement(DB)]);
   const t = now();
-  return games.map(g => ({ ...gameView(g), isNew: t - g.released_at < NEW_RELEASE, stats: stats[g.slug] || { plays: 0, players: 0, ms: 0, perPlayer: 0 } }))
-    .sort((a, b) => (b.isNew - a.isNew) || (b.stats.perPlayer - a.stats.perPlayer) || a.title.localeCompare(b.title));
+  return games.map(g => ({ ...gameView(g), featuredAt: g.featured_at || 0, isNew: t - g.released_at < NEW_RELEASE, stats: stats[g.slug] || { plays: 0, players: 0, ms: 0, perPlayer: 0 } }))
+    .sort((a, b) => ((b.featuredAt || 0) - (a.featuredAt || 0)) || (b.isNew - a.isNew) || (b.stats.perPlayer - a.stats.perPlayer) || a.title.localeCompare(b.title));
 }
 
 /* ---------- per-game stats for developers ---------- */

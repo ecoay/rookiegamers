@@ -2,7 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fakeD1 } from './d1.js';
 import { migrate, createPlayer, getGame, monthKey, prevMonth, levelFor } from '../src/db.js';
-import { submitScore, topScores, archiveMonth, fame, playNext, gameEvent } from '../src/play.js';
+import { submitScore, topScores, archiveMonth, fame, playNext, gameEvent, frontPage } from '../src/play.js';
+import { updateGame } from '../src/dev.js';
+import { homePage } from '../src/home.js';
 import { signToken, verifyToken } from '../src/tokens.js';
 import { attachIdentity } from '../src/auth.js';
 
@@ -124,4 +126,24 @@ test('identities link to one player and never merge accounts', async () => {
   assert.equal(levelFor(0), 1);
   assert.equal(levelFor(100), 2);
   assert.equal(levelFor(300), 3);
+});
+
+test('only the portal features games, and featured games lead the home page', async () => {
+  const DB = await setup();
+  const dev = await createPlayer(DB, { name: 'dev' });
+  await DB.prepare('UPDATE games SET owner_id = ?').bind(dev).run();
+  // A developer can't feature their own game: the field is ignored.
+  await updateGame(DB, dev, 'race', { featured: true });
+  assert.equal((await getGame(DB, 'race')).featured_at, null);
+  assert.deepEqual((await frontPage(DB)).map(g => g.slug), ['dodge', 'race']);
+  const g = await updateGame(DB, null, 'race', { featured: true }, true);
+  assert.equal(g.featured, true);
+  const games = await frontPage(DB);
+  assert.deepEqual(games.map(g => [g.slug, g.featured]), [['race', true], ['dodge', false]]);
+  const html = homePage({ me: null, games, site: env.SITE_URL });
+  assert.match(html, /data-cat="featured"/);
+  assert.equal(html.match(/class="feat"/g).length, 1);
+  await updateGame(DB, null, 'race', { featured: false }, true);
+  assert.equal((await getGame(DB, 'race')).featured_at, null);
+  assert.doesNotMatch(homePage({ me: null, games: await frontPage(DB), site: env.SITE_URL }), /data-cat="featured"/);
 });

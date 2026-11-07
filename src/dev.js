@@ -84,6 +84,8 @@ function cleanGame(b, existing) {
   if (b.devices !== undefined) out.devices = ['mobile', 'desktop', 'both'].includes(b.devices) ? b.devices : 'both';
   if (b.multiplayer !== undefined) out.multiplayer = b.multiplayer ? 1 : 0;
   if (b.coin !== undefined) out.coin = b.coin ? 1 : 0;
+  // How a game uses wallets. 'required' puts it in the Web3 Arcade (18+ players only).
+  if (b.wallet !== undefined) out.wallet = ['none', 'optional', 'required'].includes(b.wallet) ? b.wallet : null;
   if (b.payoutWallet !== undefined) {
     if (b.payoutWallet && !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(b.payoutWallet)) fail(400, 'That doesn\'t look like a Solana address.');
     out.payout_wallet = b.payoutWallet || null;
@@ -126,6 +128,8 @@ export async function updateGame(DB, pid, slug, b, admin = false) {
   const f = cleanGame(b, g);
   if (admin && b.developer !== undefined) f.developer = cleanText(b.developer, 40);
   if (admin && b.kind !== undefined) f.kind = b.kind === 'linked' ? 'linked' : 'hosted';
+  // Featuring is the portal's call, not the developer's. The most recently featured game shows first.
+  if (admin && b.featured !== undefined) f.featured_at = b.featured ? (g.featured_at || now()) : null;
   if (!Object.keys(f).length) return devGameView(g);
   await DB.prepare(`UPDATE games SET ${Object.keys(f).map(k => `${k} = ?`).join(', ')} WHERE slug = ?`).bind(...Object.values(f), g.slug).run();
   return devGameView(await getGame(DB, g.slug));

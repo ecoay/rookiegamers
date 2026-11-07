@@ -197,11 +197,14 @@ async function profilePage(DB, req, env, id) {
 <div class="muted">Level ${lv} · ${pub.xp.toLocaleString('en-US')} XP</div><div class="xp" style="margin-top:6px"><i style="width:${Math.min(100, Math.round((pub.xp - floor) / Math.max(1, next - floor) * 100))}%"></i></div></div></div>
 ${mine ? `<h2>Your profile</h2><form class="form" id="profForm"><input name="name" maxlength="18" value="${esc(pub.name)}" aria-label="Display name">
 ${titles.results.length ? `<select name="title" style="padding:10px;border-radius:12px;background:var(--panel2);color:var(--text);border:1px solid var(--line)"><option value="">No title</option>${titles.results.map(t => `<option${t.title === pub.title ? ' selected' : ''}>${esc(t.title)}</option>`).join('')}</select>` : ''}
-<div style="display:flex;gap:8px"><button class="btn" type="submit">Save</button><button class="btn ghost" type="button" id="signOut">Sign out</button></div><div id="profMsg"></div></form>${growth}` : ''}
+<div style="display:flex;gap:8px"><button class="btn" type="submit">Save</button><button class="btn ghost" type="button" id="signOut">Sign out</button></div><div id="profMsg"></div></form>${growth}
+<details class="danger" style="margin-top:28px"><summary class="muted">Delete my account</summary><p class="muted">This removes your profile, linked sign-ins, scores, gems and play history for good. See <a href="/data-deletion">data deletion</a>.</p>
+<form class="form" id="delForm"><input name="confirm" placeholder="Type DELETE" aria-label="Type DELETE to confirm" autocomplete="off"><button class="btn ghost" type="submit">Delete my account</button><div id="delMsg"></div></form></details>` : ''}
 <h2>Games played</h2>${games.results.length ? `<table class="t"><tr><th>Game</th><th>Best</th><th>Played</th></tr>${games.results.map(r => `<tr><td><a href="/play/${esc(r.slug)}">${esc(r.title)}</a></td><td>${r.best == null ? '<span class="muted">-</span>' : `${r.best.toLocaleString('en-US')} <span class="muted">${esc(r.score_label.toLowerCase())}</span>`}</td><td>${Math.max(1, Math.round(r.ms / 60000))} min</td></tr>`).join('')}</table>` : '<p class="muted">No games yet.</p>'}
 ${titles.results.length ? `<h2>Titles</h2><ul>${titles.results.map(t => `<li>${esc(t.title)}</li>`).join('')}</ul>` : ''}`;
   const script = mine ? `<script>
 document.getElementById('profForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);const r=await fetch('/api/me',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:f.get('name'),title:f.has('title')?f.get('title'):undefined})});document.getElementById('profMsg').innerHTML=r.ok?'<div class="note ok">Saved.</div>':'<div class="note err">Couldn\\'t save.</div>';if(r.ok)setTimeout(()=>location.reload(),500)};
+document.getElementById('delForm').onsubmit=async e=>{e.preventDefault();const c=new FormData(e.target).get('confirm');const r=await fetch('/api/me/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({confirm:c})});const j=await r.json().catch(()=>({}));if(r.ok){location.href='/data-deletion?done=1';return}document.getElementById('delMsg').innerHTML='<div class="note err"></div>';document.getElementById('delMsg').firstChild.textContent=j.error||'Could not delete.'};
 document.getElementById('signOut').onclick=async()=>{await fetch('/api/auth/signout',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});location.href='/'};
 const ic=document.getElementById('inviteCopy');if(ic)ic.onclick=async()=>{const i=document.getElementById('inviteUrl');i.select();try{await navigator.clipboard.writeText(i.value)}catch(e){document.execCommand('copy')}ic.textContent='Copied'};
 const is=document.getElementById('inviteShare');if(is&&navigator.share)is.hidden=false;if(is)is.onclick=()=>navigator.share({title:'RookieGamers',text:'Play free games with me on RookieGamers.',url:document.getElementById('inviteUrl').value}).catch(()=>{});
@@ -219,6 +222,7 @@ function signinPage(env, me, url) {
   const after = popup ? '/auth/done' : next;
   const body = `<h1>Sign in</h1><p class="lede">One account for every game on RookieGamers: your level, scores, titles and gems follow you everywhere.</p>${msg}
 ${me ? `<div class="note ok">You're signed in as ${esc(me.name)}. <a href="${esc(next)}">Continue</a></div>` : ''}
+<p class="muted">By signing in you agree to the <a href="/terms">Terms of Service</a> and <a href="/privacy">Privacy Policy</a>.</p>
 <div class="form"><label class="check"><input type="checkbox" id="age"> I'm 13 or older. Under 13? You can still play every game as a guest.</label>
 ${p.social.length ? `<div class="socials">${p.social.map(x => `<a class="btn ghost social" data-net="${esc(x.id)}" href="/auth/${esc(x.route)}?next=${encodeURIComponent(after)}">Continue with ${esc(x.name)}</a>`).join('')}</div>${p.email ? '<div class="muted" style="text-align:center">or</div>' : ''}` : ''}
 ${p.email ? `<form class="form" id="emailForm"><input type="email" name="email" required placeholder="you@example.com" autocomplete="email" aria-label="Email">
@@ -351,7 +355,11 @@ function notFound(me, msg = 'Nothing here.') {
 async function staticPage(DB, req, env, path) {
   const page = NEW_PAGES[path];
   const me = await viewer(DB, req);
-  const body = `<article class="doc"><h1>${esc(page.h1)}</h1>${markdown(page.body)}</article>`;
+  const q = new URL(req.url).searchParams;
+  const code = (q.get('code') || '').replace(/[^a-z0-9]/g, '').slice(0, 24);
+  const note = path !== '/data-deletion' ? '' : q.has('done') ? '<div class="note ok">Your RookieGamers account and its data were deleted.</div>'
+    : code ? `<div class="note ok">Deletion request <code>${esc(code)}</code> is complete: we removed the Facebook link and the profile details it shared.</div>` : '';
+  const body = `<article class="doc"><h1>${esc(page.h1)}</h1>${note}${markdown(page.body)}</article>`;
   return html(layout({ titleFull: page.title, desc: page.description, me, active: path, body,
     url: siteURL(env) + path, canonicalPath: path, jsonld: page.jsonld }));
 }

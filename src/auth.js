@@ -72,11 +72,15 @@ const NETWORKS = {
     userinfo: 'https://graph.facebook.com/v19.0/me?fields=id,name,picture.type(large)', pkce: false, tokenInQuery: true,
     user: u => ({ sub: u.id, name: u.name, picture: u.picture && u.picture.data && !u.picture.data.is_silhouette ? u.picture.data.url : null }),
   },
-  // Instagram's own login (2024 API). It only works for Business and Creator accounts.
+  // Instagram API with Unified Login: Meta's required flow for new apps. It runs through the
+  // Facebook Login for Business dialog on the Meta (Facebook) app's own ID and secret, with the
+  // permissions set in a login configuration (INSTAGRAM_CONFIG_ID) instead of a scope. It works for
+  // Instagram professional (Business and Creator) accounts, and needs Meta's app review for the public.
   instagram: {
-    name: 'Instagram', scope: 'instagram_business_basic', authorize: 'https://www.instagram.com/oauth/authorize', token: 'https://api.instagram.com/oauth/access_token',
-    userinfo: 'https://graph.instagram.com/v21.0/me?fields=user_id,username,name,profile_picture_url', pkce: false, tokenInQuery: true,
-    user: u => ({ sub: u.user_id || u.id, name: u.name || u.username, handle: u.username, picture: u.profile_picture_url || null }),
+    name: 'Instagram', keys: 'FACEBOOK', configEnv: 'INSTAGRAM_CONFIG_ID',
+    authorize: 'https://www.facebook.com/dialog/oauth', token: 'https://graph.facebook.com/v26.0/oauth/access_token', tokenGet: true,
+    userinfo: 'https://graph.facebook.com/v26.0/me/assigned_instagram_accounts?fields=id,username', pkce: false, tokenInQuery: true,
+    user: j => { const a = j.data && j.data[0]; return a ? { sub: String(a.id), name: a.username, handle: a.username } : null; },
   },
   threads: {
     name: 'Threads', scope: 'threads_basic', authorize: 'https://threads.net/oauth/authorize', token: 'https://graph.threads.net/oauth/access_token',
@@ -134,7 +138,9 @@ export function socialConfig(env, route) {
   if (n && n.special) return n.enabled(env) ? { ...n, id: route, route } : null;
   const key = n && n.keys || route.toUpperCase();
   if (!n || !env[key + '_CLIENT_ID'] || !env[key + '_CLIENT_SECRET']) return null;
-  return { ...n, id: route, route, clientId: env[key + '_CLIENT_ID'], secret: env[key + '_CLIENT_SECRET'] };
+  if (n.configEnv && !env[n.configEnv]) return null;
+  const extra = n.configEnv ? { ...(n.extra || {}), config_id: env[n.configEnv] } : n.extra;
+  return { ...n, extra, id: route, route, clientId: env[key + '_CLIENT_ID'], secret: env[key + '_CLIENT_SECRET'] };
 }
 
 export const providers = env => {
@@ -239,7 +245,7 @@ export async function socialStart(env, req, route) {
   const state = newId('', 32), nonce = newId('', 32);
   const { verifier, challenge } = await pkce();
   const q = new URLSearchParams({
-    [o.clientIdParam || 'client_id']: o.clientId, redirect_uri: `${url.origin}/auth/${o.route}/callback`, response_type: 'code', scope: o.scope, state,
+    [o.clientIdParam || 'client_id']: o.clientId, redirect_uri: `${url.origin}/auth/${o.route}/callback`, response_type: 'code', ...(o.scope ? { scope: o.scope } : {}), state,
     ...(o.pkce === false ? {} : { code_challenge: challenge, code_challenge_method: 'S256' }), ...(o.extra || {}),
   });
   if (o.issuer) q.set('nonce', nonce);
@@ -262,7 +268,9 @@ export async function socialCallback(DB, env, req, route) {
   if (o.pkce !== false) form.code_verifier = stash.verifier;
   const headers = { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' };
   if (o.basicAuth) headers.authorization = 'Basic ' + btoa(`${o.clientId}:${o.secret}`); else form.client_secret = o.secret;
-  const tr = await fetch(doc.token_endpoint, { method: 'POST', headers, body: new URLSearchParams(form) });
+  // Meta's Unified Login documents the code exchange as a GET with the params in the query.
+  const tr = o.tokenGet ? await fetch(`${doc.token_endpoint}?${new URLSearchParams(form)}`, { headers: { accept: 'application/json' } })
+    : await fetch(doc.token_endpoint, { method: 'POST', headers, body: new URLSearchParams(form) });
   if (!tr.ok) { console.error(o.id, 'token', tr.status, await tr.text()); return fail(); }
   const tokens = await tr.json();
   let who;

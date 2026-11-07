@@ -36,3 +36,17 @@ test('networks switch on from their keys; Steam and Bluesky need none', () => {
   assert.equal(socialConfig({ STEAM_LOGIN: '0' }, 'steam'), null);
   assert.equal(socialConfig({ TIKTOK_CLIENT_ID: 'k', TIKTOK_CLIENT_SECRET: 's' }, 'tiktok').clientIdParam, 'client_key');
 });
+
+test('Instagram uses Meta Unified Login: the Facebook app keys plus a login configuration', async () => {
+  const { socialStart } = await import('../src/auth.js');
+  assert.equal(socialConfig({ FACEBOOK_CLIENT_ID: 'a', FACEBOOK_CLIENT_SECRET: 'b' }, 'instagram'), null, 'needs INSTAGRAM_CONFIG_ID');
+  const env = { FACEBOOK_CLIENT_ID: 'app1', FACEBOOK_CLIENT_SECRET: 'sec', INSTAGRAM_CONFIG_ID: 'cfg9' };
+  const res = await socialStart(env, new Request('https://rg.example/auth/instagram?age=1'), 'instagram');
+  const loc = new URL(res.headers.get('location'));
+  assert.equal(loc.origin + loc.pathname, 'https://www.facebook.com/dialog/oauth');
+  assert.equal(loc.searchParams.get('client_id'), 'app1');
+  assert.equal(loc.searchParams.get('config_id'), 'cfg9');
+  assert.equal(loc.searchParams.get('response_type'), 'code');
+  assert.equal(loc.searchParams.get('redirect_uri'), 'https://rg.example/auth/instagram/callback');
+  assert.equal(loc.searchParams.has('scope'), false, 'permissions come from the configuration');
+});

@@ -2,8 +2,9 @@ import { createPlayer, newId, sha256, now, safeJSON, cleanText } from './db.js';
 import { GEMS, grantGems, recordReferral, VIA_COOKIE, SHARE_COOKIE } from './growth.js';
 
 // Portal sign-in. Players sign in with an email link, SceneSpot (any OpenID Connect provider set
-// through OIDC_* secrets), or a social network: Google, Discord, X, Twitch or GitHub, each switched
-// on by its <NAME>_CLIENT_ID and <NAME>_CLIENT_SECRET secrets. Each way to sign in is an identity
+// through OIDC_* secrets), or a social network (NETWORKS below). The OAuth networks are each switched
+// on by their <NAME>_CLIENT_ID and <NAME>_CLIENT_SECRET secrets. Steam, Bluesky and Telegram use
+// their own protocols (social-extra.js); Steam and Bluesky need no keys at all. Each way to sign in is an identity
 // row pointing at one player, and linking another network to your account earns gems.
 
 const COOKIE = 'rg_sid';
@@ -66,6 +67,54 @@ const NETWORKS = {
     user: j => ({ sub: j.data && j.data.id, name: j.data && j.data.name, handle: j.data && j.data.username, picture: j.data && j.data.profile_image_url }),
   },
   twitch: { name: 'Twitch', issuer: 'https://id.twitch.tv/oauth2', scope: 'openid' },
+  facebook: {
+    name: 'Facebook', scope: 'public_profile', authorize: 'https://www.facebook.com/v19.0/dialog/oauth', token: 'https://graph.facebook.com/v19.0/oauth/access_token',
+    userinfo: 'https://graph.facebook.com/v19.0/me?fields=id,name,picture.type(large)', pkce: false, tokenInQuery: true,
+    user: u => ({ sub: u.id, name: u.name, picture: u.picture && u.picture.data && !u.picture.data.is_silhouette ? u.picture.data.url : null }),
+  },
+  // Instagram's own login (2024 API). It only works for Business and Creator accounts.
+  instagram: {
+    name: 'Instagram', scope: 'instagram_business_basic', authorize: 'https://www.instagram.com/oauth/authorize', token: 'https://api.instagram.com/oauth/access_token',
+    userinfo: 'https://graph.instagram.com/v21.0/me?fields=user_id,username,name,profile_picture_url', pkce: false, tokenInQuery: true,
+    user: u => ({ sub: u.user_id || u.id, name: u.name || u.username, handle: u.username, picture: u.profile_picture_url || null }),
+  },
+  threads: {
+    name: 'Threads', scope: 'threads_basic', authorize: 'https://threads.net/oauth/authorize', token: 'https://graph.threads.net/oauth/access_token',
+    userinfo: 'https://graph.threads.net/v1.0/me?fields=id,username,name,threads_profile_picture_url', pkce: false, tokenInQuery: true,
+    user: u => ({ sub: u.id, name: u.name || u.username, handle: u.username, picture: u.threads_profile_picture_url || null }),
+  },
+  // TikTok calls the client id "client_key" and splits scopes with commas.
+  tiktok: {
+    name: 'TikTok', scope: 'user.info.basic', authorize: 'https://www.tiktok.com/v2/auth/authorize/', token: 'https://open.tiktokapis.com/v2/oauth/token/',
+    userinfo: 'https://open.tiktokapis.com/v2/user/info/?fields=open_id,display_name,avatar_url', pkce: false, clientIdParam: 'client_key',
+    user: j => { const u = j.data && j.data.user || {}; return { sub: u.open_id, name: u.display_name, picture: u.avatar_url || null }; },
+  },
+  reddit: {
+    name: 'Reddit', scope: 'identity', authorize: 'https://www.reddit.com/api/v1/authorize', token: 'https://www.reddit.com/api/v1/access_token',
+    userinfo: 'https://oauth.reddit.com/api/v1/me', basicAuth: true, pkce: false, extra: { duration: 'temporary' },
+    user: u => ({ sub: u.id, name: u.name, handle: u.name, picture: u.icon_img ? String(u.icon_img).split('?')[0] : null }),
+  },
+  // YouTube uses the Google app's keys, and links the player's channel.
+  youtube: {
+    name: 'YouTube', keys: 'GOOGLE', scope: 'https://www.googleapis.com/auth/youtube.readonly', authorize: 'https://accounts.google.com/o/oauth2/v2/auth', token: 'https://oauth2.googleapis.com/token',
+    userinfo: 'https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true',
+    user: j => { const c = j.items && j.items[0]; return c ? { sub: c.id, name: c.snippet.title, handle: c.snippet.customUrl || null, picture: c.snippet.thumbnails && c.snippet.thumbnails.default && c.snippet.thumbnails.default.url } : null; },
+  },
+  snapchat: {
+    name: 'Snapchat', scope: 'https://auth.snapchat.com/oauth2/api/user.display_name https://auth.snapchat.com/oauth2/api/user.bitmoji.avatar',
+    authorize: 'https://accounts.snapchat.com/accounts/oauth2/auth', token: 'https://accounts.snapchat.com/accounts/oauth2/token', basicAuth: true,
+    userinfo: 'https://kit.snapchat.com/v1/me?query=' + encodeURIComponent('{me{externalId displayName bitmoji{avatar}}}'),
+    user: j => { const m = j.data && j.data.me || {}; return { sub: m.externalId, name: m.displayName, picture: m.bitmoji && m.bitmoji.avatar || null }; },
+  },
+  linkedin: { name: 'LinkedIn', issuer: 'https://www.linkedin.com/oauth', scope: 'openid profile email', pkce: false },
+  kick: {
+    name: 'Kick', scope: 'user:read', authorize: 'https://id.kick.com/oauth/authorize', token: 'https://id.kick.com/oauth/token', userinfo: 'https://api.kick.com/public/v1/users',
+    user: j => { const u = j.data && j.data[0] || {}; return { sub: u.user_id != null ? String(u.user_id) : null, name: u.name, handle: u.name, picture: u.profile_picture || null }; },
+  },
+  // No OAuth app: Steam uses OpenID 2.0, Telegram its login widget, Bluesky atproto OAuth (src/social-extra.js).
+  steam: { name: 'Steam', special: true, enabled: env => env.STEAM_LOGIN !== '0' },
+  telegram: { name: 'Telegram', special: true, enabled: env => !!(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_BOT_NAME) },
+  bluesky: { name: 'Bluesky', special: true, enabled: env => env.BLUESKY_LOGIN !== '0' },
   github: {
     name: 'GitHub', scope: 'read:user', authorize: 'https://github.com/login/oauth/authorize', token: 'https://github.com/login/oauth/access_token', userinfo: 'https://api.github.com/user',
     user: u => ({ sub: u.id != null ? String(u.id) : null, name: u.name || u.login, handle: u.login, picture: u.avatar_url }),
@@ -82,7 +131,8 @@ export function oidcConfig(env) {
 export function socialConfig(env, route) {
   if (route === 'oidc') return oidcConfig(env);
   const n = NETWORKS[route];
-  const key = route.toUpperCase();
+  if (n && n.special) return n.enabled(env) ? { ...n, id: route, route } : null;
+  const key = n && n.keys || route.toUpperCase();
   if (!n || !env[key + '_CLIENT_ID'] || !env[key + '_CLIENT_SECRET']) return null;
   return { ...n, id: route, route, clientId: env[key + '_CLIENT_ID'], secret: env[key + '_CLIENT_SECRET'] };
 }
@@ -189,8 +239,8 @@ export async function socialStart(env, req, route) {
   const state = newId('', 32), nonce = newId('', 32);
   const { verifier, challenge } = await pkce();
   const q = new URLSearchParams({
-    client_id: o.clientId, redirect_uri: `${url.origin}/auth/${o.route}/callback`, response_type: 'code', scope: o.scope,
-    state, code_challenge: challenge, code_challenge_method: 'S256',
+    [o.clientIdParam || 'client_id']: o.clientId, redirect_uri: `${url.origin}/auth/${o.route}/callback`, response_type: 'code', scope: o.scope, state,
+    ...(o.pkce === false ? {} : { code_challenge: challenge, code_challenge_method: 'S256' }), ...(o.extra || {}),
   });
   if (o.issuer) q.set('nonce', nonce);
   const stash = JSON.stringify({ state, nonce, verifier, route: o.route, age: url.searchParams.get('age') === '1', next: safeNext(url.searchParams.get('next')) });
@@ -208,7 +258,8 @@ export async function socialCallback(DB, env, req, route) {
   const fail = (why = 'failed') => redirect(`/signin?${why}=1&next=${encodeURIComponent(stash.next || '/')}`, [clear]);
   if (!o || !code || !stash.state || stash.route !== o.route || url.searchParams.get('state') !== stash.state) return fail();
   const doc = await endpoints(o);
-  const form = { grant_type: 'authorization_code', code, redirect_uri: `${url.origin}/auth/${o.route}/callback`, client_id: o.clientId, code_verifier: stash.verifier };
+  const form = { grant_type: 'authorization_code', code, redirect_uri: `${url.origin}/auth/${o.route}/callback`, [o.clientIdParam || 'client_id']: o.clientId };
+  if (o.pkce !== false) form.code_verifier = stash.verifier;
   const headers = { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' };
   if (o.basicAuth) headers.authorization = 'Basic ' + btoa(`${o.clientId}:${o.secret}`); else form.client_secret = o.secret;
   const tr = await fetch(doc.token_endpoint, { method: 'POST', headers, body: new URLSearchParams(form) });
@@ -237,11 +288,20 @@ export async function socialCallback(DB, env, req, route) {
     };
   } else {
     if (!tokens.access_token) return fail();
-    const ur = await fetch(doc.userinfo_endpoint, { headers: { authorization: `Bearer ${tokens.access_token}`, accept: 'application/json', 'user-agent': 'RookieGamers' } });
+    // Meta's Graph APIs want the token as a query parameter.
+    const infoURL = o.tokenInQuery ? `${doc.userinfo_endpoint}${doc.userinfo_endpoint.includes('?') ? '&' : '?'}access_token=${encodeURIComponent(tokens.access_token)}` : doc.userinfo_endpoint;
+    const ur = await fetch(infoURL, { headers: { authorization: `Bearer ${tokens.access_token}`, accept: 'application/json', 'user-agent': 'RookieGamers' } });
     if (!ur.ok) { console.error(o.id, 'user', ur.status, await ur.text()); return fail(); }
     who = o.user(await ur.json());
   }
   if (!who || !who.sub) return fail();
+  return finishSocial(DB, req, o, stash, who, clear);
+}
+
+// Signs the player in (or links the network to the signed-in player) once a network says who
+// they are. Shared by the OAuth networks and by Steam, Bluesky and Telegram.
+export async function finishSocial(DB, req, o, stash, who, clear) {
+  const fail = (why = 'failed') => redirect(`/signin?${why}=1&next=${encodeURIComponent(stash.next || '/')}`, [clear]);
   const email = who.email ? String(who.email).toLowerCase() : null;
   const profile = { name: who.name || null, handle: who.handle || null, picture: who.picture || null };
   if (who.city !== undefined) Object.assign(profile, { city: who.city, scenes: who.scenes });

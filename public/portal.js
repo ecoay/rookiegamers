@@ -60,6 +60,10 @@
     ['WhatsApp', (u, t) => 'https://wa.me/?text=' + encodeURIComponent(t + ' ' + u)],
     ['Facebook', u => 'https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(u)],
     ['Reddit', (u, t) => 'https://www.reddit.com/submit?url=' + encodeURIComponent(u) + '&title=' + encodeURIComponent(t)],
+    ['Bluesky', (u, t) => 'https://bsky.app/intent/compose?text=' + encodeURIComponent(t + ' ' + u)],
+    ['Threads', (u, t) => 'https://www.threads.net/intent/post?text=' + encodeURIComponent(t + ' ' + u)],
+    ['LinkedIn', u => 'https://www.linkedin.com/sharing/share-offsite/?url=' + encodeURIComponent(u)],
+    ['Tumblr', (u, t) => 'https://www.tumblr.com/widgets/share/tool?canonicalUrl=' + encodeURIComponent(u) + '&caption=' + encodeURIComponent(t)],
     ['Telegram', (u, t) => 'https://t.me/share/url?url=' + encodeURIComponent(u) + '&text=' + encodeURIComponent(t)],
     ['Email', (u, t) => 'mailto:?subject=' + encodeURIComponent(B.title + ' on RookieGamers') + '&body=' + encodeURIComponent(t + '\n\n' + u)],
   ];

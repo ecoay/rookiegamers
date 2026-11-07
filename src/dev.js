@@ -128,6 +128,8 @@ export async function updateGame(DB, pid, slug, b, admin = false) {
   const f = cleanGame(b, g);
   if (admin && b.developer !== undefined) f.developer = cleanText(b.developer, 40);
   if (admin && b.kind !== undefined) f.kind = b.kind === 'linked' ? 'linked' : 'hosted';
+  // Featuring is the portal's call, not the developer's. The most recently featured game shows first.
+  if (admin && b.featured !== undefined) f.featured_at = b.featured ? (g.featured_at || now()) : null;
   if (!Object.keys(f).length) return devGameView(g);
   await DB.prepare(`UPDATE games SET ${Object.keys(f).map(k => `${k} = ?`).join(', ')} WHERE slug = ?`).bind(...Object.values(f), g.slug).run();
   return devGameView(await getGame(DB, g.slug));

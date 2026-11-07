@@ -57,6 +57,8 @@ curl -X POST https://rookiegamers.com/api/admin/invites -H "authorization: Beare
 curl -X POST https://rookiegamers.com/api/admin/games/handofnine/owner -H "authorization: Bearer $ADMIN_TOKEN" -H 'content-type: application/json' -d '{"email":"dev@example.com"}'
 # set a seeded game's URL and put it live
 curl -X PATCH https://rookiegamers.com/api/admin/games/handofnine -H "authorization: Bearer $ADMIN_TOKEN" -H 'content-type: application/json' -d '{"url":"https://...","origins":["https://..."]}'
+# feature a game at the top of the home page ({"featured": false} to stop)
+curl -X PATCH https://rookiegamers.com/api/admin/games/unsays -H "authorization: Bearer $ADMIN_TOKEN" -H 'content-type: application/json' -d '{"featured":true}'
 curl -X POST https://rookiegamers.com/api/admin/games/handofnine/publish -H "authorization: Bearer $ADMIN_TOKEN" -H 'content-type: application/json' -d '{}'
 # the unsays server key, for its RG_SERVER_KEY secret
 curl -X POST https://rookiegamers.com/api/admin/games/unsays/server-key -H "authorization: Bearer $ADMIN_TOKEN" -H 'content-type: application/json' -d '{}'
@@ -66,7 +68,8 @@ curl -X POST https://rookiegamers.com/api/admin/games/unsays/server-key -H "auth
 
 ```sh
 A="authorization: Bearer $ADMIN_TOKEN"; J='content-type: application/json'
-# games waiting for ad review, then approve one (or "rejected" with a note the developer sees, or "paused")
+# games in the ad loop waiting for paid-ad review, then monetize one (or "rejected" with a note the developer sees, or "paused").
+# A game is in the loop (showing and getting unpaid cross-promo clips) from the moment its developer accepts the terms.
 curl https://rookiegamers.com/api/admin/ads/queue -H "$A"
 curl -X POST https://rookiegamers.com/api/admin/games/unsays/ads/review -H "$A" -H "$J" -d '{"status":"approved"}'
 # clips waiting for review, then approve one (or "rejected" with a note)

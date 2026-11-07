@@ -101,7 +101,7 @@ When the player is signed in, the link credits them. A friend who signs up throu
 
 ### Ads
 
-The portal serves every ad. Your game only says when there's a good moment. Ask for ads on a live game (from `/dev`, `POST /api/dev/games/<slug>/ads`, or the `request_ads` tool) and RookieGamers reviews it. Until it's approved, these calls resolve right away with `{ shown: false }`, so you can wire them in from day one. You keep 70% of ad revenue.
+The portal serves every ad. Your game only says when there's a good moment. Join the ad loop on a live game (from `/dev`, `POST /api/dev/games/<slug>/ads`, or the `request_ads` tool) by accepting the ad terms. Your game is in the loop right away: ads start showing, filled with clips of other RookieGamers games, unpaid, while your clips run in theirs. Meanwhile RookieGamers reviews the game for paid ads. Once it's approved (monetized), sponsor and network ads fill in too, and you keep 70% of ad revenue. Before a game joins the loop, these calls resolve right away with `{ shown: false }`, so you can wire them in from day one.
 
 | Call | Does |
 | --- | --- |
@@ -115,14 +115,15 @@ Ads come from sponsors RookieGamers sells, promoted clips from other developers,
 
 #### The ad terms and game clips
 
-Asking for ads means accepting the ad terms (`{ "agree": true }`):
+Joining the ad loop means accepting the ad terms (`{ "agree": true }`):
 
-- You keep 70% of what paid ads in your game earn.
+- Your game is in the loop as soon as you accept. Until it passes review for paid ads, it shows only other games' clips, unpaid, and your clips run in theirs.
+- Once approved for paid ads, you keep 70% of what paid ads in your game earn.
 - When there's no paid ad, your game shows clips of other RookieGamers games. Neither side is paid for these.
 - Your own approved clips run in other games the same way, for free. Games that have shown more clips than theirs got are shown more, so the swap stays fair.
-- Approved games also get a clip banner on their page: promoted clips first, then the free rotation.
+- Games in the loop also get a clip banner on their page: the free rotation, and once monetized, promoted clips first.
 
-Once you've asked for ads, upload gameplay clips: MP4, 30 to 60 seconds, up to 25 MB, up to 5 per game. RookieGamers reviews each one. Rewarded ads use clips of 30 seconds or less and play to the end. Midgame ads can use any clip and can be skipped after 5 seconds.
+Once you're in the loop, upload gameplay clips: MP4, 30 to 60 seconds, up to 25 MB, up to 5 per game. RookieGamers reviews each one. Rewarded ads use clips of 30 seconds or less and play to the end. Midgame ads can use any clip and can be skipped after 5 seconds.
 
 A clip of 30 seconds or less can be **promoted**: pay a budget ($20 to $5,000) through RookieGamers' checkout and it runs as a paid ad in other games, ahead of the free rotation, until the budget is spent. The games that show it earn their 70% like any other paid ad.
 
@@ -210,7 +211,7 @@ All calls take `Authorization: Bearer rgk_...` (make a key at `rookiegamers.com/
 | `PUT /api/dev/games/<slug>/products/<sku>` | Add or change a product: `{ title, blurb, kind, priceCents, adUnlock, adDays, active }` |
 | `GET /api/dev/games/<slug>/products` | The game's products |
 | `DELETE /api/dev/games/<slug>/products/<sku>` | Remove a product (switched off instead if anyone owns it) |
-| `POST /api/dev/games/<slug>/ads` | Ask for ads and accept the ad terms: `{ agree: true, formats: ["rewarded", "midgame"] }`. `GET` shows the review status and any note |
+| `POST /api/dev/games/<slug>/ads` | Join the ad loop and ask for paid ads, accepting the ad terms: `{ agree: true, formats: ["rewarded", "midgame"] }`. `GET` shows the status (`inLoop`, `monetized`) and any review note |
 | `PUT /api/dev/games/<slug>/clips?title=<name>` | Upload a clip (raw MP4 body, 30 to 60 seconds) |
 | `GET /api/dev/games/<slug>/clips` | Your clips, their review status, promotions, and the cross-promo counts for the last 30 days |
 | `DELETE /api/dev/games/<slug>/clips/<id>` | Remove a clip (ends its promotion) |

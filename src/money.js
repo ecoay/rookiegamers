@@ -109,15 +109,16 @@ export async function migrateMoney(DB) {
 /* ---------- ad review ---------- */
 
 export function adsView(g) {
-  return { status: g.ads || 'off', note: g.ads_note || null, reviewedAt: g.ads_at || null, formats: safeJSON(g.ad_formats, FORMATS), agreedAt: g.ads_agreed_at || null };
+  return { status: g.ads || 'off', inLoop: inLoop(g), monetized: monetized(g), note: g.ads_note || null, reviewedAt: g.ads_at || null, formats: safeJSON(g.ad_formats, FORMATS), agreedAt: g.ads_agreed_at || null };
 }
 const cleanFormats = f => { const list = [].concat(f || []).filter(x => FORMATS.includes(x)); return list.length ? [...new Set(list)] : FORMATS; };
 
-// The developer asks for ads on a live game, and accepts the ad terms (see AD_TERMS in clips.js):
-// with no paid ad, their game shows other games' clips unpaid, and their clips run elsewhere free.
+// The developer asks for ads on a live game, and accepts the ad terms (see AD_TERMS in clips.js).
+// That puts the game in the ad loop at once (status 'requested'): it shows other games' clips
+// unpaid, and its clips run elsewhere free, while the portal reviews it for paid ads.
 export async function requestAds(DB, g, { formats, agree } = {}) {
   if (!g.live) fail(400, 'Publish the game first. Ads are reviewed on live games.');
-  if (agree !== true && !g.ads_agreed_at) fail(400, 'Accept the ad terms first: { "agree": true }. With no paid ad, your game shows other games\' clips, unpaid, and your clips run in theirs.');
+  if (agree !== true && !g.ads_agreed_at) fail(400, 'Accept the ad terms first: { "agree": true }. Your game joins the ad loop right away: it shows other games\' clips, unpaid, and your clips run in theirs, while we review it for paid ads.');
   if (agree === true) await DB.prepare('UPDATE games SET ads_agreed_at = COALESCE(ads_agreed_at, ?), ads_terms = ? WHERE slug = ?').bind(now(), AD_TERMS_VERSION, g.slug).run();
   if (g.ads === 'approved') return adsView(await getGame(DB, g.slug));
   await DB.prepare(`UPDATE games SET ads = 'requested', ads_note = NULL, ad_formats = ? WHERE slug = ?`).bind(JSON.stringify(cleanFormats(formats)), g.slug).run();
@@ -143,7 +144,12 @@ export async function adsQueue(DB) {
 
 /* ---------- serving ads ---------- */
 
-export const adsOn = (g, format) => !!g && !!g.live && g.ads === 'approved' && safeJSON(g.ad_formats, FORMATS).includes(format);
+// Two stages. Accepting the terms puts a live game in the ad loop straight away: it shows other
+// games' clips (unpaid) and its clips run in theirs, while we review it for paid ads. Once it's
+// approved (monetized) it also gets sponsors and the ad network, and earns its share.
+export const inLoop = g => !!g && !!g.live && !!g.ads_agreed_at && (g.ads === 'requested' || g.ads === 'approved');
+export const monetized = g => inLoop(g) && g.ads === 'approved';
+export const adsOn = (g, format) => inLoop(g) && safeJSON(g.ad_formats, FORMATS).includes(format);
 
 async function whoFor(req, pid) {
   if (pid) return pid;
@@ -166,7 +172,7 @@ async function pickSponsor(DB, g, format) {
 // Starts an ad. Returns { fill: false, reason } or { fill: true, view, url, format, source, minMs }.
 export async function startAd(DB, env, req, site, g, { format, sku, mode }, pid) {
   if (!FORMATS.includes(format)) return { fill: false, reason: 'unknown-format' };
-  if (!adsOn(g, format)) return { fill: false, reason: 'not-approved' };
+  if (!adsOn(g, format)) return { fill: false, reason: 'not-in-ad-loop' };
   const who = await whoFor(req, pid);
   const t = now();
   if (format === 'midgame') {
@@ -182,8 +188,10 @@ export async function startAd(DB, env, req, site, g, { format, sku, mode }, pid)
     if (!product || !product.ad_unlock) return { fill: false, reason: 'not-ad-unlockable' };
     if (!pid) return { fill: false, reason: 'signin', signin: true };
   }
-  const sponsor = await pickSponsor(DB, g, format);
-  const source = sponsor ? 'sponsor' : env.ADSENSE_CLIENT && mode === 'portal' ? 'network' : 'house';
+  // Before a game is monetized it only shows the free rotation, so it earns nothing yet.
+  const paid = monetized(g);
+  const sponsor = paid ? await pickSponsor(DB, g, format) : null;
+  const source = sponsor ? 'sponsor' : paid && env.ADSENSE_CLIENT && mode === 'portal' ? 'network' : 'house';
   // The free rotation: another game's clip (rewarded ads only use clips of 30 seconds or less).
   const clip = source === 'house' ? await pickHouseClip(DB, g, { shortOnly: format === 'rewarded' }) : null;
   const ms = minMs(source, format, clip ? clip.seconds : sponsor?.clip_seconds);
@@ -324,7 +332,7 @@ export async function putProduct(DB, g, sku, b) {
     price_cents = excluded.price_cents, ad_unlock = excluded.ad_unlock, ad_days = excluded.ad_days, coin_ok = excluded.coin_ok, active = excluded.active, updated_at = excluded.updated_at`)
     .bind(g.slug, sku, p.title, p.blurb, p.kind, p.price_cents, p.ad_unlock, p.ad_days, p.coin_ok, p.active, old ? old.created_at : now(), now()).run();
   const view = productView(await DB.prepare('SELECT * FROM products WHERE game = ? AND sku = ?').bind(g.slug, sku).first(), g);
-  if (p.ad_unlock && !adsOn(g, 'rewarded')) view.note = 'Ad unlocks start working once the game is approved for ads.';
+  if (p.ad_unlock && !adsOn(g, 'rewarded')) view.note = 'Ad unlocks start working once the game joins the ad loop.';
   return view;
 }
 

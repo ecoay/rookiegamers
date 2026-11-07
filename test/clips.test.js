@@ -35,7 +35,7 @@ async function setup() {
   const DB = fakeD1();
   await migrate(DB);
   const devs = {};
-  for (const slug of ['alpha', 'beta', 'gamma']) {
+  for (const slug of ['alpha', 'beta', 'gamma', 'delta']) {
     const pid = await createPlayer(DB, { name: slug });
     devs[slug] = pid;
     await DB.prepare('INSERT INTO developers (player_id, name, created_at) VALUES (?, ?, 0)').bind(pid, slug).run();
@@ -77,6 +77,18 @@ test('with no paid ad, games show each other\'s clips: never their own, only fro
   }
   const own = await money.startAd(DB, e, req(), SITE, await game('alpha'), { format: 'midgame' }, null);
   assert.equal((await DB.prepare('SELECT clip FROM ad_views WHERE id = ?').bind(own.view).first()).clip, null, 'not its own clip');
+  // delta is in the loop but not monetized yet: it shows clips and its clip runs elsewhere.
+  await money.requestAds(DB, await game('delta'), { agree: true });
+  const dv = await money.startAd(DB, e, req('8.8.8.8'), SITE, await game('delta'), { format: 'midgame' }, null);
+  assert.equal(dv.source, 'house');
+  assert.ok((await DB.prepare('SELECT clip FROM ad_views WHERE id = ?').bind(dv.view).first()).clip);
+  const d = await clip('delta', 30);
+  const seen = new Set();
+  for (let i = 0; i < 40; i++) {
+    const s = await money.startAd(DB, e, req('7.7.7.' + i), SITE, await game('beta'), { format: 'midgame' }, null);
+    seen.add((await DB.prepare('SELECT clip FROM ad_views WHERE id = ?').bind(s.view).first()).clip);
+  }
+  assert.ok(seen.has(d.id), 'a game in the loop gets its clip shown before it is monetized');
 });
 
 test('rewarded clips run to their end, and only clips of 30 seconds or less are used', async () => {

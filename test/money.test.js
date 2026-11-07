@@ -42,25 +42,40 @@ const rewind = (DB, view, ms) => DB.prepare('UPDATE ad_views SET started_at = st
 const approve = async (DB, slug) => { await DB.prepare('UPDATE games SET ads_agreed_at = 1 WHERE slug = ?').bind(slug).run(); return money.reviewAds(DB, slug, { status: 'approved' }); };
 const secretOf = start => new URL(start.url).searchParams.get('s');
 
-test('ads stay off until the portal approves the game', async () => {
+test('accepting the terms joins the ad loop at once; paid ads wait for approval', async () => {
   const { DB, game } = await setup();
-  assert.deepEqual(await money.startAd(DB, env, req(), SITE, await game(), { format: 'rewarded' }, null), { fill: false, reason: 'not-approved' });
+  assert.deepEqual(await money.startAd(DB, env, req(), SITE, await game(), { format: 'rewarded' }, null), { fill: false, reason: 'not-in-ad-loop' });
   await DB.prepare('UPDATE games SET live = 0 WHERE slug = ?').bind('dodge').run();
   await assert.rejects(money.requestAds(DB, await game()), /Publish the game first/);
   await DB.prepare('UPDATE games SET live = 1 WHERE slug = ?').bind('dodge').run();
   await assert.rejects(money.requestAds(DB, await game(), { formats: ['rewarded'] }), /ad terms/);
   await assert.rejects(money.reviewAds(DB, 'dodge', { status: 'approved' }), /hasn't accepted/);
+  await money.createCampaign(DB, { name: 'Acme', headline: 'Acme chairs', cpmCents: 800, budgetCents: 10000 });
   const asked = await money.requestAds(DB, await game(), { formats: ['rewarded'], agree: true });
   assert.equal(asked.status, 'requested');
   assert.ok(asked.agreedAt);
+  assert.equal(asked.inLoop, true);
+  assert.equal(asked.monetized, false);
   assert.equal((await money.adsQueue(DB))[0].status, 'requested');
+  // In the loop but not monetized: ads run, but only the unpaid rotation, even with a sponsor waiting.
+  const env2 = { ...env, ADSENSE_CLIENT: 'ca-pub-1' };
+  for (let i = 0; i < 5; i++) {
+    await DB.prepare('DELETE FROM ad_views').run();
+    const s = await money.startAd(DB, env2, req(), SITE, await game(), { format: 'rewarded', mode: 'portal' }, null);
+    assert.equal(s.fill, true);
+    assert.equal(s.source, 'house');
+  }
   await assert.rejects(money.reviewAds(DB, 'dodge', { status: 'rejected' }), /Say why/);
   await money.reviewAds(DB, 'dodge', { status: 'approved' });
+  assert.equal(money.adsView(await game()).monetized, true);
+  await DB.prepare('DELETE FROM ad_views').run();
   const s = await money.startAd(DB, env, req(), SITE, await game(), { format: 'rewarded' }, null);
-  assert.equal(s.fill, true);
-  assert.equal(s.source, 'house');
+  assert.equal(s.source, 'sponsor');
   // Only the formats asked for are on.
-  assert.equal((await money.startAd(DB, env, req(), SITE, await game(), { format: 'midgame' }, null)).reason, 'not-approved');
+  assert.equal((await money.startAd(DB, env, req(), SITE, await game(), { format: 'midgame' }, null)).reason, 'not-in-ad-loop');
+  // Rejected or paused games leave the loop.
+  await money.reviewAds(DB, 'dodge', { status: 'paused' });
+  assert.equal((await money.startAd(DB, env, req(), SITE, await game(), { format: 'rewarded' }, null)).reason, 'not-in-ad-loop');
 });
 
 test('a rewarded ad has to run its time, counts once, and signs a receipt that is not a login', async () => {
@@ -109,7 +124,7 @@ test('products check their prices and keep sold items', async () => {
   await assert.rejects(money.putProduct(DB, await game(), 'free', { title: 'Free' }), /cash price/);
   const p = await money.putProduct(DB, await game(), 'pass', { title: 'Season pass', kind: 'pass', priceCents: 499, adUnlock: 3 });
   assert.equal(p.kind, 'pass');
-  assert.match(p.note, /approved for ads/);
+  assert.match(p.note, /joins the ad loop/);
   await money.grant(DB, player, 'dodge', 'pass', 'cash', Date.now() + DAY);
   assert.deepEqual(await money.deleteProduct(DB, await game(), 'pass'), { deleted: false, active: false });
   assert.equal((await money.listProducts(DB, await game())).length, 0);

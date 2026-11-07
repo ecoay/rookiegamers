@@ -299,7 +299,7 @@
 
   /* ---------- ads ---------- */
 
-  // The portal serves every ad. Until the game is approved for ads these resolve to
+  // The portal serves every ad. Until the game joins the ad loop these resolve to
   // { shown: false }, so it's safe to wire them in from day one.
   function adFrame(url, view) {
     return new Promise(resolve => {

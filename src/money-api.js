@@ -31,8 +31,8 @@ export async function moneyV1(req, env, DB, url, path) {
   // The clip banner on game pages: a promoted clip, or one from the free rotation.
   if (path === '/ads/banner' && method === 'GET') {
     const g = await getGame(DB, String(url.searchParams.get('game') || ''));
-    // Only on games in the ad program: they agreed to show other games' clips.
-    const b = g && g.ads === 'approved' && g.live && await clips.bannerClip(DB, g);
+    // Only on games in the ad loop: they agreed to show other games' clips.
+    const b = money.inLoop(g) && await clips.bannerClip(DB, g, { paid: money.monetized(g) });
     if (!b) return cjson({ clip: null });
     const cg = await getGame(DB, b.clip.game);
     return cjson({ promoted: b.promoted, clip: { ...clips.clipView(b.clip, site), gameTitle: cg.title, play: `${site}/play/${cg.slug}?ref=${g.slug}` } });
@@ -249,7 +249,7 @@ function storeDone(url) {
 /* ---------- the Money section of /dev ---------- */
 
 const usd = c => (c < 0 ? '-' : '') + '$' + (Math.abs(c || 0) / 100).toFixed(2);
-const ADS_LABEL = { off: 'Not requested', requested: 'In review', approved: 'Approved', rejected: 'Not approved', paused: 'Paused' };
+const ADS_LABEL = { off: 'Not in the ad loop', requested: 'In the ad loop, in review for paid ads', approved: 'Monetized', rejected: 'Not approved', paused: 'Paused' };
 
 export async function devMoneySection(DB, env, pid, games) {
   const pay = await money.payoutStatus(DB, pid);
@@ -267,9 +267,9 @@ export async function devMoneySection(DB, env, pid, games) {
 <div class="agents"><div class="panel"><h3>Balance</h3><p><strong>${usd(pay.availableCents)}</strong> ready · ${usd(pay.pendingCents)} clearing · ${usd(pay.paidCents)} paid so far</p>${payBox}</div></div>
 ${rows.length ? rows.map(({ g, ads, products, clips: cl, promo }) => `<div class="panel" style="margin-top:14px"><h3><span>${esc(g.title)}</span><span class="muted small">Ads: ${esc(ADS_LABEL[ads.status] || ads.status)}</span></h3>
 ${ads.note ? `<p class="note err">${esc(ads.note)}</p>` : ''}
-${ads.status === 'off' || ads.status === 'rejected' ? `<p class="muted">Ask for ads once the game is live. We review it, then <code>rg.ads.rewarded()</code> and <code>rg.ads.midgame()</code> start showing ads.</p><details class="terms"><summary>The ad terms</summary><ul>${clips.AD_TERMS.map(t => `<li>${esc(t)}</li>`).join('')}</ul></details>
+${ads.status === 'off' || ads.status === 'rejected' ? `<p class="muted">Join the ad loop once the game is live. <code>rg.ads.rewarded()</code> and <code>rg.ads.midgame()</code> start right away with other games' clips, unpaid, and your clips run in theirs. Meanwhile we review the game for paid ads. Once it's approved, sponsor and network ads fill in and you earn ${money.SPLIT.ads * 100}%.</p><details class="terms"><summary>The ad terms</summary><ul>${clips.AD_TERMS.map(t => `<li>${esc(t)}</li>`).join('')}</ul></details>
 <label class="small"><input type="checkbox" data-agree="${esc(g.slug)}"${ads.agreedAt ? ' checked' : ''}> I accept the ad terms, including showing other games' clips unpaid</label>
-<button class="btn small" data-ads="${esc(g.slug)}" type="button"${g.live ? '' : ' disabled'}>Ask for ads</button>` : ''}
+<button class="btn small" data-ads="${esc(g.slug)}" type="button"${g.live ? '' : ' disabled'}>Join the ad loop</button>` : ''}
 ${ads.status === 'approved' || ads.status === 'requested' ? `<h4 style="margin:14px 0 6px">Clips</h4><p class="muted small">Upload a gameplay clip, 30 to 60 seconds, as an MP4. Once approved it runs free in other games when they have no paid ad, as theirs do in yours (last 30 days: ${promo.clipsShownInYourGame} shown in your game, yours shown ${promo.yourClipsShownElsewhere} times). Clips of 30 seconds or less can be promoted as paid ads.</p>
 ${cl.length ? `<table class="t"><tr><th>Clip</th><th>Length</th><th>Status</th><th></th></tr>${cl.map(c => `<tr><td><a href="/clips/${esc(c.id)}.mp4" target="_blank" rel="noopener">${esc(c.title)}</a></td><td>${Math.round(c.seconds)}s</td><td>${esc(c.status)}${c.note ? ` <span class="muted">(${esc(c.note)})</span>` : ''}</td><td>${c.status === 'approved' && c.seconds <= clips.CLIP.shortS + 0.5 ? `<form class="promo" data-game="${esc(g.slug)}" data-clip="${esc(c.id)}" style="display:inline-flex;gap:6px"><input name="budget" placeholder="Budget, like 50" inputmode="decimal" style="max-width:110px"><button class="btn small" type="submit">Promote</button></form> ` : ''}<button class="btn ghost small" data-del-clip="${esc(c.id)}" data-game="${esc(g.slug)}" type="button">Remove</button></td></tr>`).join('')}</table>` : ''}
 <form class="clipup" data-game="${esc(g.slug)}" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px"><input type="file" name="file" accept="video/mp4" required><button class="btn small" type="submit">Upload clip</button><span class="msg"></span></form>` : ''}

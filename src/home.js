@@ -65,8 +65,8 @@ function gameCard(g) {
   const tags = (g.tags || []).slice(0, 3);
   const plays = g.stats?.plays || 0;
   const hay = [g.title, g.developer, g.blurb, ...(g.tags || [])].join(' ').toLowerCase();
-  return `<article class="gc" data-tags="${esc((g.tags || []).join('|').toLowerCase())}" data-wallet="${esc(g.wallet)}" data-q="${esc(hay)}" data-new="${g.isNew ? 1 : 0}">
-<a class="hit" href="/play/${esc(g.slug)}" aria-label="Play ${esc(g.title)}"></a>${cover(g)}<span class="badge">${icon(ic)}${label}</span>
+  return `<article class="gc" data-tags="${esc((g.tags || []).join('|').toLowerCase())}" data-wallet="${esc(g.wallet)}" data-q="${esc(hay)}" data-new="${g.isNew ? 1 : 0}" data-featured="${g.featured ? 1 : 0}">
+<a class="hit" href="/play/${esc(g.slug)}" aria-label="Play ${esc(g.title)}"></a>${cover(g)}${g.featured ? `<span class="feat">${icon('star')}Featured</span>` : ''}<span class="badge">${icon(ic)}${label}</span>
 <div class="gb"><h3>${esc(g.title)}</h3><p>${esc(g.blurb || 'A RookieGamers original.')}</p>
 ${tags.length ? `<div class="tags">${tags.map(t => `<span>${esc(t.replace(/\b\w/g, m => m.toUpperCase()))}</span>`).join('')}</div>` : '<div class="tags"></div>'}
 <div class="foot">${plays ? `<span class="stat" title="Plays in the last 30 days">${icon('play')}${compact(plays)} plays</span>` : g.isNew ? '<span class="stat new">New</span>' : '<span></span>'}<a class="pn" href="/play/${esc(g.slug)}">${icon('play')}Play Now</a></div></div></article>`;
@@ -110,7 +110,7 @@ ${me ? `<a class="b me" href="/u/${esc(me.id)}"><img src="${esc(me.avatar)}" alt
 </section>
 
 <nav class="chips" aria-label="Categories">
-${CATEGORIES.map(([k, l, ic], i) => `<button type="button" data-cat="${k}"${i === 0 ? ' class="on" aria-pressed="true"' : ' aria-pressed="false"'}>${ic ? icon(ic) : ''}${l}</button>`).join('')}
+${(games.some(g => g.featured) ? [CATEGORIES[0], ['featured', 'Featured', 'sparkles'], ...CATEGORIES.slice(1)] : CATEGORIES).map(([k, l, ic], i) => `<button type="button" data-cat="${k}"${i === 0 ? ' class="on" aria-pressed="true"' : ' aria-pressed="false"'}>${ic ? icon(ic) : ''}${l}</button>`).join('')}
 <span class="more"><button type="button" id="moreBtn" aria-expanded="false">${icon('plus')}More${icon('down', 'sm')}</button>
 <span class="morelist" id="moreList" hidden>${extra.length ? extra.map(t => `<button type="button" data-cat="${esc(t)}" aria-pressed="false">${esc(t.replace(/\b\w/g, m => m.toUpperCase()))}</button>`).join('') : '<em>More categories as games arrive</em>'}</span></span>
 </nav>

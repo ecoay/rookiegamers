@@ -14,12 +14,13 @@
 
   function apply() {
     const words = state.q.toLowerCase().split(/\s+/).filter(Boolean);
-    const want = state.cat === 'all' ? null : tagsFor(state.cat);
+    const want = state.cat === 'all' || state.cat === 'featured' ? null : tagsFor(state.cat);
     let shown = 0;
     for (const c of cards) {
       const tags = (c.dataset.tags || '').split('|');
       const ok = words.every(w => (c.dataset.q || '').includes(w))
         && (!want || want.some(t => tags.includes(t)))
+        && (state.cat !== 'featured' || c.dataset.featured === '1')
         && (!state.pt || c.dataset.wallet === state.pt)
         && (!state.fresh || c.dataset.new === '1');
       c.hidden = !ok;

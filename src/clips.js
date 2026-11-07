@@ -3,8 +3,9 @@ import { stripe, stripeReady } from './stripe.js';
 
 // Game clips and the cross-promo agreement.
 //
-// Every game approved for ads can submit gameplay clips, 30 to 60 seconds long, which the portal
-// reviews like the game itself. In return for ads, the developer agrees to the cross-promo terms:
+// Every game in the ad loop can submit gameplay clips, 30 to 60 seconds long, which the portal
+// reviews like the game itself. To join the loop, the developer agrees to the cross-promo terms.
+// The game is in the loop from the moment they accept, before it's approved for paid ads:
 //
 // - When no paid ad is available, their game shows other games' clips, unpaid. Their own clip runs
 //   in other games the same way. Nobody pays and nobody is paid for these. Games that host more
@@ -19,9 +20,11 @@ import { stripe, stripeReady } from './stripe.js';
 
 export const CLIP = { minS: 30, maxS: 60, shortS: 30, maxBytes: 25 * 1024 * 1024 };
 export const PROMO = { minCents: 2000, maxCents: 500000, defaultCpmCents: 600 };
-export const AD_TERMS_VERSION = '2026-11';
+export const AD_TERMS_VERSION = '2026-11b';
 export const AD_TERMS = [
   'RookieGamers serves every ad in your game. You don\'t add ad code of your own.',
+  'Accepting these terms puts your game in the ad loop right away. Until your game passes review for paid ads, it shows only other games\' clips, unpaid, and your clips run in theirs.',
+  'Once your game is approved for paid ads, it also shows sponsor and network ads.',
   'You keep 70% of what paid ads in your game earn, paid monthly.',
   'When there\'s no paid ad, your game shows clips of other RookieGamers games. Neither side is paid for these.',
   'Your approved clips run in other games the same way, for free.',
@@ -122,7 +125,7 @@ export async function serveClip(env, DB, id, req) {
 // theirs have been shown get picked more often (and the other way round), within 4x either way.
 export async function pickHouseClip(DB, g, { shortOnly = false } = {}) {
   const clips = (await DB.prepare(`SELECT c.* FROM clips c JOIN games g ON g.slug = c.game
-    WHERE c.status = 'approved' AND c.game != ? AND g.live = 1 AND g.ads = 'approved' AND g.ads_agreed_at IS NOT NULL ${shortOnly ? 'AND c.seconds <= ?' : ''}`)
+    WHERE c.status = 'approved' AND c.game != ? AND g.live = 1 AND g.ads IN ('requested', 'approved') AND g.ads_agreed_at IS NOT NULL ${shortOnly ? 'AND c.seconds <= ?' : ''}`)
     .bind(...[g.slug, ...(shortOnly ? [CLIP.shortS + 0.5] : [])]).all()).results;
   if (!clips.length) return null;
   const since = now() - 30 * DAY;
@@ -144,9 +147,10 @@ export async function crossPromoStats(DB, slug) {
 /* ---------- the banner on game pages ---------- */
 
 // Paid promotions first (not billed for banner showings, which come free with a promotion),
-// then the free rotation. Never the game's own clip.
-export async function bannerClip(DB, g) {
-  const promos = (await DB.prepare(`SELECT c.* FROM campaigns p JOIN clips c ON c.id = p.clip WHERE p.active = 1 AND p.spent_milli < p.budget_cents * 1000 AND c.status = 'approved' AND c.game != ?`).bind(g.slug).all()).results;
+// then the free rotation. Never the game's own clip. Games not yet monetized show only the free
+// rotation, like their in-game ads.
+export async function bannerClip(DB, g, { paid = true } = {}) {
+  const promos = !paid ? [] : (await DB.prepare(`SELECT c.* FROM campaigns p JOIN clips c ON c.id = p.clip WHERE p.active = 1 AND p.spent_milli < p.budget_cents * 1000 AND c.status = 'approved' AND c.game != ?`).bind(g.slug).all()).results;
   if (promos.length) return { clip: promos[Math.floor(Math.random() * promos.length)], promoted: true };
   const c = await pickHouseClip(DB, g);
   return c ? { clip: c, promoted: false } : null;

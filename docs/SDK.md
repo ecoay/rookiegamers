@@ -25,7 +25,7 @@ Add one script tag and you get sign-in, leaderboards, the Hall of Fame and cross
 
 - Call `rg.game.loaded()` once, when the game can be played. Publishing checks look for it.
 - Wrap real play in `gameplayStart()` / `gameplayStop()`. The portal uses this to count playtime and XP.
-- Guests can always play. Only ask for sign-in when it matters, like saving a score: `if (!await rg.user.get()) await rg.user.login()`.
+- Ask for sign-in when it matters, like saving a score or claiming gems: `if (!await rg.user.get()) await rg.user.login()`.
 - Never put outside ad code in a game. The portal serves ads for every game.
 - The RookieGamers account is the only sign-in. Don't ship your own login or another one (Google, Firebase Auth, Supabase Auth, Auth0, Clerk, Facebook and so on). Use `rg.user.login()`, and `rg.user.token()` if your server needs to know who's playing. This holds wherever your game runs: on the portal, on your own site, or on other portals.
 - Make it fit a phone screen: include `<meta name="viewport" content="width=device-width, initial-scale=1">` and handle touch as well as mouse.

@@ -38,7 +38,7 @@ We see AI as a tool that can open game making to more people, and we would rathe
 Our aim is to be an integrated plugin for indie game makers, reachable over MCP from the AI assistants they already use, such as ChatGPT, Grok and, later, Claude. Part of that groundwork exists today: a public MCP server and setup guides for some AI coding tools. See [AI and RookieGamers](/ai) for what exists now and what is still planned.
 
 ## For players
-Every game can be played free as a guest. Player accounts are for people 13 and up, and you never need one to play. Wallets are optional, for players 18 and up, and are not live yet. Every game plays without one.
+Every game is free to play. Your RookieGamers account, for people 13 and up, saves your scores and earns gems for each social network you link. Wallets are optional, for players 18 and up, and are not live yet. Every game plays without one.
 
 ## For makers
 Read [For creators](/creators) for how publishing is designed to work, then [Publish](/dev) for setup and [SDK docs](/docs) for the reference.
@@ -80,7 +80,7 @@ export const CREATORS_PAGE = {
 
 ## What the SDK provides
 Add one script tag and the SDK v1 gives your game:
-- Sign-in with the RookieGamers account. Guests can always play.
+- Sign-in with the RookieGamers account, the only login a game uses.
 - Score submission with a monthly board and an all-time board.
 - The Hall of Fame: at the end of each month, the top 3 on every game's monthly board are kept forever and earn a title shown across the portal.
 - Play-next cards that suggest another portal game at a natural break.
@@ -164,7 +164,7 @@ We aim to become an integrated plugin for indie game makers, reachable over MCP 
 
 export const FAQ_QA = [
   ['Is RookieGamers free to play?', 'Yes. Games are free to play in the browser, with nothing to install.'],
-  ['Do I need an account?', 'No. Every game can be played as a guest. Player accounts are for people 13 and up.'],
+  ['Do I need an account?', 'Sign up free with your RookieGamers account (13 and up) to save scores, climb the leaderboards and earn gems. One account works in every game.'],
   ['Do I need a crypto wallet?', 'No. Every game plays without one. Wallets are not live yet. When they arrive they will be optional, for players 18 and up, and the site says they will only unlock coin discounts and onchain games.'],
   ['Can I publish a game made with AI?', 'Yes. Developers who use AI are welcome.'],
   ['Can I publish a game made without AI?', 'Yes. Hand-made games are just as welcome.'],

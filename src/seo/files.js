@@ -68,7 +68,7 @@ We see AI as a tool that can open game making to more people, and we would rathe
 Our aim is to be an integrated plugin for indie game makers, reachable over MCP from the AI assistants they already use, such as ChatGPT, Grok and, later, Claude. Part of that groundwork exists today: a public MCP server and setup guides for some AI coding tools. See [AI and RookieGamers](https://rookiegamers.com/ai) for what exists now and what is still planned.
 
 ## For players
-Every game can be played free as a guest. Player accounts are for people 13 and up, and you never need one to play. Wallets are optional, for players 18 and up, and are not live yet. Every game plays without one.
+Every game is free to play. Your RookieGamers account, for people 13 and up, saves your scores and earns gems for each social network you link. Wallets are optional, for players 18 and up, and are not live yet. Every game plays without one.
 
 ## For makers
 Read [For creators](https://rookiegamers.com/creators) for how publishing is designed to work, then [Publish](https://rookiegamers.com/dev) for setup and [SDK docs](https://rookiegamers.com/docs) for the reference.
@@ -85,7 +85,7 @@ Every game on RookieGamers is meant to share one player base. Your players can f
 
 ## What the SDK provides
 Add one script tag and the SDK v1 gives your game:
-- Sign-in with the RookieGamers account. Guests can always play.
+- Sign-in with the RookieGamers account, the only login a game uses.
 - Score submission with a monthly board and an all-time board.
 - The Hall of Fame: at the end of each month, the top 3 on every game's monthly board are kept forever and earn a title shown across the portal.
 - Play-next cards that suggest another portal game at a natural break.
@@ -127,7 +127,7 @@ URL: https://rookiegamers.com/faq
 Yes. Games are free to play in the browser, with nothing to install.
 
 ## Do I need an account?
-No. Every game can be played as a guest. Player accounts are for people 13 and up.
+Sign up free with your RookieGamers account (13 and up) to save scores, climb the leaderboards and earn gems. One account works in every game.
 
 ## Do I need a crypto wallet?
 No. Every game plays without one. Wallets are not live yet. When they arrive they will be optional, for players 18 and up, and the site says they will only unlock coin discounts and onchain games.
@@ -157,7 +157,7 @@ Get a developer API key on this page, then connect the RookieGamers MCP server (
 # SDK docs
 URL: https://rookiegamers.com/docs
 
-SDK v1 adds sign-in, monthly and all-time leaderboards, the Hall of Fame, gameplay events and play-next cards with one script tag. Guests can always play. The RookieGamers account is the only sign-in, and games should not include outside ad code.
+SDK v1 adds sign-in, monthly and all-time leaderboards, the Hall of Fame, gameplay events and play-next cards with one script tag. The RookieGamers account is the only sign-in, and games should not include outside ad code.
 
 # Games
 - unsays (https://rookiegamers.com/play/unsays), by ecoay: Things you can't unsay. Everyone gets the same letters, writes a line for the topic, then everyone votes.

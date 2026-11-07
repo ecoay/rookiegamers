@@ -9,6 +9,7 @@ import { archiveMonth } from './play.js';
 import { siteURL, contentType } from './dev.js';
 import { stripeWebhook, moneyPage } from './money-api.js';
 import { monthlyMoney } from './money.js';
+import { ROBOTS_TXT, SITEMAP_XML, LLMS_TXT, LLMS_FULL_TXT } from './seo/files.js';
 
 // Routes for rookiegamers.com: the portal pages, the SDK API (/api/v1), the developer API
 // (/api/dev), the MCP server (/mcp), and hosted game files (on GAMES_HOST, or /hosted/ locally).
@@ -50,6 +51,10 @@ export default {
     }
 
     try {
+      if (path === '/robots.txt') return new Response(ROBOTS_TXT, { headers: { 'content-type': 'text/plain; charset=utf-8' } });
+      if (path === '/sitemap.xml') return new Response(SITEMAP_XML, { headers: { 'content-type': 'application/xml; charset=utf-8' } });
+      if (path === '/llms.txt') return new Response(LLMS_TXT, { headers: { 'content-type': 'text/plain; charset=utf-8' } });
+      if (path === '/llms-full.txt') return new Response(LLMS_FULL_TXT, { headers: { 'content-type': 'text/plain; charset=utf-8' } });
       if (path === '/.well-known/jwks.json') return json(await jwks(DB), 200, { ...CORS, 'cache-control': 'public, max-age=300' });
       if (path === '/mcp') return mcp(req, env, DB, siteURL(env));
       if (path.startsWith('/api/v1/') || path === '/api/v1') return await apiV1(req, env, DB, url);

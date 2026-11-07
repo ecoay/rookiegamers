@@ -8,6 +8,7 @@ import { devMoneySection } from './money-api.js';
 import SDK_DOCS from '../docs/SDK.md';
 import { homePage } from './home.js';
 import { canonical, ldJSON } from './seo/site.js';
+import { ICONS, EARN, iconURI, ownedIcons, claimEarned, PLAY_GEMS } from './icons.js';
 import { FOOTER_LINKS, NEW_PAGES, DEV_JSONLD, DOCS_JSONLD, HALL_OF_FAME_JSONLD, PLAY_PAGES } from './seo/copy.js';
 
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -21,7 +22,7 @@ const gemCount = n => `<span class="gems" title="Gems">${GEM}${Number(n || 0).to
 function layout({ title, titleFull, desc, me, active, body, url, scripts = '', og = {}, canonicalPath, jsonld, robots }) {
   const t = titleFull || (title ? `${title} · RookieGamers` : 'RookieGamers · free web games, one account');
   const ogTitle = og.title || t, ogDesc = og.desc || desc || 'Play free web games from indie developers, with one account, one level and one Hall of Fame across every game.';
-  const nav = [['/', 'Games'], ['/hall-of-fame', 'Hall of Fame'], ['/dev', 'Publish'], ['/docs', 'SDK']];
+  const nav = [['/', 'Games'], ['/hall-of-fame', 'Hall of Fame'], ['/shop', 'Diamond Shop'], ['/dev', 'Publish'], ['/docs', 'SDK']];
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(t)}</title><meta name="description" content="${esc(desc || 'Play free web games from indie developers, with one account, one level and one Hall of Fame across every game.')}">
 ${robots ? `<meta name="robots" content="${esc(robots)}">` : ''}
@@ -347,6 +348,45 @@ async function docs(DB, req, env) {
   return html(layout({ title: 'SDK docs', me, active: '/docs', body: `<article class="doc">${markdown(md)}</article>`, url: siteURL(env) + '/docs', canonicalPath: '/docs', jsonld: DOCS_JSONLD }));
 }
 
+// The Diamond Shop: spend gems on platform icons. Icons are bought here or earned; social media
+// pictures are never used as platform icons.
+async function shopPage(DB, req, env) {
+  const me = await viewer(DB, req);
+  let owned = {}, equipped = null;
+  if (me) {
+    const p = await getPlayer(DB, me.id);
+    await claimEarned(DB, p);
+    owned = await ownedIcons(DB, me.id);
+    equipped = p.icon || null;
+  }
+  const card = i => {
+    const has = !!owned[i.id], on = equipped === i.id;
+    const action = !me ? (i.earn ? `<span class="muted small">${esc(EARN[i.earn])}</span>` : `<a class="btn small" href="/signin?next=%2Fshop">${GEM}${i.price.toLocaleString('en-US')}</a>`)
+      : has ? (on ? '<span class="tag">Wearing</span>' : `<button class="btn small" data-equip="${esc(i.id)}">Wear</button>`)
+      : i.price ? `<button class="btn small" data-buy="${esc(i.id)}"${me.gems < i.price ? ' disabled' : ''}>${GEM}${i.price.toLocaleString('en-US')}</button>`
+      : `<span class="muted small">${esc(EARN[i.earn])}</span>`;
+    return `<div class="icon-card${has ? ' owned' : ''}"><img src="${esc(iconURI(i))}" alt="" width="72" height="72"><b>${esc(i.name)}</b>${i.earn ? '<span class="muted small">Earned</span>' : ''}${action}</div>`;
+  };
+  const shop = ICONS.filter(i => i.price), earned = ICONS.filter(i => i.earn);
+  const body = `<style>.icon-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:14px;margin:12px 0 28px}.icon-card{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 10px;border:1px solid var(--line);border-radius:16px;background:var(--panel);text-align:center}.icon-card.owned{border-color:var(--violet)}.icon-card img{border-radius:50%}.icon-card .tag{font-size:13px;font-weight:600;color:var(--violet)}.icon-card button[disabled]{opacity:.45;cursor:not-allowed}.icon-card .gem{width:14px;height:14px;vertical-align:-2px;margin-right:4px}</style>
+<h1>Diamond Shop</h1><p class="lede">Spend the gems you earn on icons that show next to your name across RookieGamers.${me ? ` You have ${gemCount(me.gems)}.` : ''}</p>
+<p class="muted">Earn gems by playing any game (${PLAY_GEMS.amount} gems for every ${PLAY_GEMS.every / 60000} minutes, up to ${PLAY_GEMS.amount * PLAY_GEMS.perDay} a day), linking a social network (${GEMS.link} each) and inviting friends (${GEMS.referrer}). Gems have no cash value.</p>
+<div id="shopMsg"></div>
+<h2>Icons for gems</h2><div class="icon-grid">${shop.map(card).join('')}</div>
+<h2>Earned icons</h2><p class="muted">These can't be bought. Hit the milestone and they're yours.</p><div class="icon-grid">${earned.map(card).join('')}</div>
+<h2>Minted icons</h2><p class="muted">Minted icons arrive with wallets, for players 18 and up. They're not live yet.</p>
+${me && equipped ? '<p><button class="btn ghost small" data-equip="">Go back to my letter icon</button></p>' : ''}`;
+  const script = me ? `<script>
+const msg=t=>{const m=document.getElementById('shopMsg');m.innerHTML='<div class="note err"></div>';m.firstChild.textContent=t};
+const post=(u,b)=>fetch(u,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)}).then(async r=>({ok:r.ok,j:await r.json().catch(()=>({}))}));
+document.addEventListener('click',async e=>{const b=e.target.closest('[data-buy],[data-equip]');if(!b)return;b.disabled=true;
+const r=b.dataset.buy!==undefined?await post('/api/shop/buy',{icon:b.dataset.buy}):await post('/api/shop/equip',{icon:b.dataset.equip});
+if(!r.ok){b.disabled=false;return msg(r.j.error||'That didn\'t work.')}
+if(b.dataset.buy!==undefined)await post('/api/shop/equip',{icon:b.dataset.buy});location.reload()});
+</script>` : '';
+  return html(layout({ title: 'Diamond Shop', desc: 'Spend the gems you earn playing RookieGamers games on profile icons.', me, active: '/shop', body, scripts: script, url: siteURL(env) + '/shop', canonicalPath: '/shop' }));
+}
+
 function notFound(me, msg = 'Nothing here.') {
   return html(layout({ me, title: 'Not found', body: `<h1>${esc(msg)}</h1><p class="lede"><a href="/">Find a game to play</a>.</p>` }), 404);
 }
@@ -378,6 +418,7 @@ async function route(path, url, env, DB, req) {
   if ((m = path.match(/^\/s\/(s[a-f0-9]{12})$/))) return sharePage(DB, req, env, m[1]);
   if ((m = path.match(/^\/play\/([a-z0-9-]{1,32})\/?$/))) return play(DB, req, env, url, m[1]);
   if (path === '/hall-of-fame') return hallOfFame(DB, req, env);
+  if (path === '/shop') return shopPage(DB, req, env);
   if ((m = path.match(/^\/u\/(p[a-f0-9]{20})$/))) return profilePage(DB, req, env, m[1]);
   if (path === '/signin') return signinPage(env, await viewer(DB, req), url);
   if (path === '/auth/done') return authDone();

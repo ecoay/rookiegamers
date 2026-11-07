@@ -15,6 +15,7 @@ const P = {
   flame: '<path d="M12 3c1 3.5 5 5.5 5 10a5 5 0 0 1-10 0c0-2.5 1.5-4 2.5-5 .3 1.6 1 2.6 2 3 0-3-.5-5.5.5-8z"/>',
   users: '<circle cx="9" cy="8" r="3.2"/><path d="M3 19c.6-3.3 3-5 6-5s5.4 1.7 6 5"/><circle cx="17" cy="9" r="2.6"/><path d="M16.5 14c2.5.2 4 1.8 4.5 4.5"/>',
   library: '<path d="M4 4h4v16H4zM10 4h4v16h-4z"/><path d="m16 5 3.8-1 2.2 15.5-3.8 1z"/>',
+  diamond: '<path d="M6 3h12l4 6-10 12L2 9z"/><path d="M2 9h20M12 21 8 9l4-6 4 6z"/>',
   wand: '<path d="m4 20 11-11"/><path d="m13 7 2-2 2 2-2 2zM18 3v3M16.5 4.5h3M20 9v2M19 10h2M9 3v2M8 4h2"/>',
   link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1.2 1.2"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1.2-1.2"/>',
   search: '<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/>',
@@ -82,7 +83,7 @@ export function homePage({ me, games, site }) {
   const extra = allTags.filter(t => !known.has(t)).slice(0, 12);
   const rail = [
     ['/', 'Discover', 'compass', true], ['/?sort=new', 'New Games', 'flame'], ['/?cat=multiplayer', 'Multiplayer', 'users'],
-    [me ? `/u/${me.id}` : '/signin?next=/', 'My Library', 'library'], ['/dev', 'Creator Studio', 'wand'],
+    [me ? `/u/${me.id}` : '/signin?next=/', 'My Library', 'library'], ['/shop', 'Diamond Shop', 'diamond'], ['/dev', 'Creator Studio', 'wand'],
   ];
   const t = 'RookieGamers · Play something weird';
   const desc = 'Indie games. Instant play. Free web games from indie developers, with one account across every game.';

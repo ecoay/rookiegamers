@@ -5,6 +5,7 @@ import { migrate, createPlayer, getGame, getPlayer } from '../src/db.js';
 import { attachIdentity } from '../src/auth.js';
 import { gameEvent } from '../src/play.js';
 import { createShare, settleReferral, referralStats, GEMS } from '../src/growth.js';
+import { PLAY_GEMS } from '../src/icons.js';
 import { checkBuild } from '../src/dev.js';
 
 async function setup() {
@@ -32,7 +33,7 @@ test('a friend who joins through a link and plays pays out once, to both', async
   assert.equal(await settleReferral(DB, friend), null, 'nothing before they play');
   await playTen(DB, friend);
   assert.equal((await getPlayer(DB, sam)).gems, GEMS.referrer);
-  assert.equal((await getPlayer(DB, friend)).gems, GEMS.friend);
+  assert.equal((await getPlayer(DB, friend)).gems, GEMS.friend + PLAY_GEMS.amount, 'welcome gems plus 10 minutes of play');
   await playTen(DB, friend);
   assert.equal((await getPlayer(DB, sam)).gems, GEMS.referrer, 'pays once');
   assert.deepEqual(await referralStats(DB, sam), { joined: 1, played: 1 });

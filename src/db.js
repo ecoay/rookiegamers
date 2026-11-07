@@ -3,6 +3,7 @@
 
 import { SEED_GAMES } from './catalog.js';
 import { migrateMoney } from './money.js';
+import { ICON, iconURI } from './icons.js';
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS players (id TEXT PRIMARY KEY, name TEXT NOT NULL, hue INTEGER NOT NULL DEFAULT 0, email TEXT UNIQUE,
@@ -66,6 +67,8 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS hall (game TEXT NOT NULL, month TEXT NOT NULL, rank INTEGER NOT NULL, player_id TEXT NOT NULL, name TEXT NOT NULL,
     score INTEGER NOT NULL, PRIMARY KEY (game, month, rank))`,
   `CREATE TABLE IF NOT EXISTS titles (player_id TEXT NOT NULL, title TEXT NOT NULL, game TEXT, month TEXT, at INTEGER NOT NULL, PRIMARY KEY (player_id, title))`,
+  // Profile icons a player owns. source: 'shop' (bought with gems), 'earned' (a milestone) or 'minted'.
+  `CREATE TABLE IF NOT EXISTS icons_owned (player_id TEXT NOT NULL, icon TEXT NOT NULL, source TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (player_id, icon))`,
   `CREATE TABLE IF NOT EXISTS submits (game TEXT NOT NULL, player_id TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (game, player_id))`,
 ];
 
@@ -78,6 +81,8 @@ const COLUMNS = [
   'ALTER TABLE games ADD COLUMN wallet TEXT',
   // featured_at: set by the portal (admin) to feature a game at the top of the home page. Null is not featured.
   'ALTER TABLE games ADD COLUMN featured_at INTEGER',
+  // icon: the profile icon the player picked (src/icons.js). Null shows their letter avatar.
+  'ALTER TABLE players ADD COLUMN icon TEXT',
 ];
 
 export async function migrate(DB) {
@@ -132,8 +137,9 @@ export function publicPlayer(p) {
   return { id: p.id, name: p.name, hue: p.hue, avatar: avatarFor(p), level: levelFor(p.xp), xp: p.xp, title: p.title || null, guild: null, adult: !!p.adult_at };
 }
 
-// A generated avatar until SceneSpot profiles bring real ones.
+// The player's chosen platform icon, or a generated letter avatar. Never a social media picture.
 export function avatarFor(p) {
+  if (p.icon && ICON[p.icon]) return iconURI(p.icon);
   const letter = (p.name || '?').trim().charAt(0).toUpperCase() || '?';
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="32" fill="hsl(${p.hue} 70% 55%)"/><text x="32" y="42" font-family="system-ui,sans-serif" font-size="30" font-weight="700" text-anchor="middle" fill="#fff">${letter.replace(/[<>&"]/g, '')}</text></svg>`;
   return 'data:image/svg+xml,' + encodeURIComponent(svg);

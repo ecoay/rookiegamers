@@ -18,6 +18,7 @@ export const SITEMAP_XML = `<?xml version="1.0" encoding="UTF-8"?>
   <url><loc>https://rookiegamers.com/dev</loc></url>
   <url><loc>https://rookiegamers.com/docs</loc></url>
   <url><loc>https://rookiegamers.com/hall-of-fame</loc></url>
+  <url><loc>https://rookiegamers.com/shop</loc></url>
   <url><loc>https://rookiegamers.com/privacy</loc></url>
   <url><loc>https://rookiegamers.com/terms</loc></url>
   <url><loc>https://rookiegamers.com/data-deletion</loc></url>

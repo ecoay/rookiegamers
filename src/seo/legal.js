@@ -24,7 +24,7 @@ export const PRIVACY_PAGE = page('/privacy', 'RookieGamers Privacy Policy',
 RookieGamers (rookiegamers.com) is run by ${OPERATOR} ("we", "us"). This policy covers the RookieGamers website, the RookieGamers account you use to sign in to games, and the RookieGamers SDK that games use to talk to the portal.
 
 ## What we collect
-- **Your account.** A player ID, the display name you choose, your avatar color, your level and XP, any titles you earn, your gem balance and when you joined.
+- **Your account.** A player ID, the display name you choose, your avatar color, your level and XP, any titles you earn, your gem balance, the profile icons you own and when you joined.
 - **Sign-in details.** If you sign in with email, your email address. If you sign in with or link a social network (for example Google, YouTube, Facebook, Instagram, Threads, TikTok, X, Reddit, Snapchat, LinkedIn, Discord, Twitch, Kick, GitHub, Steam, Telegram or Bluesky), we store that network's ID for you and the basic profile it shares: your name, username and profile picture, and your email when the network provides a verified one. We never get your password for those networks, and we don't post anything on them for you.
 - **Gameplay.** Which games you play, for how long, your scores, leaderboard and Hall of Fame places, and the game that sent you to another game.
 - **Sharing and invites.** Share links you create, and who joined through your invite link, so we can award gems.

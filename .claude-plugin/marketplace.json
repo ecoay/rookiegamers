@@ -1,0 +1,11 @@
+{
+  "name": "rookiegamers",
+  "owner": { "name": "RookieGamers" },
+  "plugins": [
+    {
+      "name": "rookiegamers",
+      "source": "./integrations/claude-code",
+      "description": "Build web games with the RookieGamers SDK and publish them to rookiegamers.com from Claude Code."
+    }
+  ]
+}

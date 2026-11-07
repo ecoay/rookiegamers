@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "rookiegamers",
+  "main": "src/worker.js",
+  "compatibility_date": "2025-09-01",
+  // Serve on rookiegamers.<account>.workers.dev until rookiegamers.com points at Cloudflare.
+  "workers_dev": true,
+  "preview_urls": true,
+  // Static files: site.css, portal.js and the SDK at /sdk/v1.js. Pages and APIs run in the Worker.
+  "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": true },
+  // The docs are bundled as text so the site, the MCP server and the plugin share one source.
+  "rules": [{ "type": "Text", "globs": ["**/*.md"], "fallthrough": true }],
+  // Players, sign-in, games, plays, scores and the Hall of Fame. The Worker applies its own schema.
+  // Create it with `npx wrangler d1 create rookiegamers` and paste the id here.
+  "d1_databases": [{ "binding": "DB", "database_name": "rookiegamers", "database_id": "00000000-0000-0000-0000-000000000000" }],
+  // Hosted game builds. Create it with `npx wrangler r2 bucket create rookiegamers-games`.
+  "r2_buckets": [{ "binding": "GAMES", "bucket_name": "rookiegamers-games" }],
+  // 00:10 UTC on the 1st: seal last month's boards into the Hall of Fame.
+  "triggers": { "crons": ["10 0 1 * *"] },
+  // Secrets (dashboard, not here): RESEND_API_KEY, ADMIN_TOKEN, and for SceneSpot or any OpenID
+  // Connect provider OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET (optional OIDC_NAME, OIDC_ID).
+  // GAMES_HOST: set to "games.rookiegamers.com" once that hostname routes to this Worker.
+  "vars": { "SITE_URL": "https://rookiegamers.com", "EMAIL_FROM": "RookieGamers <login@rookiegamers.com>", "OPEN_DEVELOPERS": "0" },
+  "observability": { "enabled": true }
+}

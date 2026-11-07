@@ -87,6 +87,24 @@ At the end of each month, the top 3 on every game's monthly board go into the Ha
 
 `rg.promo.showNext()` shows a "play next" card over your game with another game from the portal, picked from ones the player hasn't tried. Call it at a natural break like a round end or a game over. Resolves to `{ ok, shown, game }`. `rg.promo.next()` gives you the pick without showing anything, if you want to draw your own card; call `rg.promo.go(slug)` when the player taps it.
 
+### Sound
+
+The game page has a sound button, like other portals, and the player's choice is remembered. The portal can't silence another site's frame itself, so your game follows the setting:
+
+```js
+const apply = muted => { music.muted = muted; sfx.muted = muted; }; // or your engine's master volume
+apply(rg.audio.muted());
+rg.audio.onChange(apply);
+```
+
+| Call | Does |
+| --- | --- |
+| `rg.audio.muted()` | `true` while the player has muted the game, while an ad is on screen, or while the tab is hidden |
+| `rg.audio.onChange(fn)` | Calls `fn(muted)` whenever that changes. Returns a function that stops listening |
+| `rg.audio.set(muted)` | For your own mute button on your own site. Inside the portal, the portal's button decides |
+
+Following `rg.audio` also covers ads: the game goes quiet when an ad opens and comes back after, with no extra code in `before` and `after`.
+
 ### Sharing and invites
 
 | Call | What it does |

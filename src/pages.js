@@ -104,7 +104,7 @@ async function play(DB, req, env, url, slug) {
   const more = others.filter(o => o.slug !== g.slug).slice(0, 4);
   const v = gameView(g);
   const body = `<div class="play"><div><div class="stage"><iframe id="game" src="${esc(src.href)}" title="${esc(g.title)}" sandbox="${frame.sandbox}" allow="autoplay; fullscreen; gamepad; clipboard-write; screen-wake-lock" allowfullscreen></iframe></div>
-<div class="stagebar"><div><h1>${esc(g.title)}</h1><span class="muted">by ${esc(g.developer)}</span></div><div class="acts"><button class="btn small" id="shareBtn" type="button">Share</button><button class="btn ghost small" id="fs" type="button">Full screen</button></div></div>
+<div class="stagebar"><div><h1>${esc(g.title)}</h1><span class="muted">by ${esc(g.developer)}</span></div><div class="acts"><button class="btn ghost small" id="soundBtn" type="button" aria-pressed="false" title="Mute or unmute the game">Sound on</button><button class="btn small" id="shareBtn" type="button">Share</button><button class="btn ghost small" id="fs" type="button">Full screen</button></div></div>
 <p class="muted">${esc(g.blurb)}</p></div>
 <aside class="side"><div class="panel"><h3><span>${esc(g.score_label)}</span><span class="tabs"><button type="button" data-b="m" aria-pressed="true">${esc(monthLabel(monthKey()))}</button><button type="button" data-b="a" aria-pressed="false">All time</button></span></h3>
 <div id="bm">${boardList(monthly, g.score_label)}</div><div id="ba" hidden>${boardList(alltime, g.score_label)}</div></div>

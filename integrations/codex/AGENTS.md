@@ -22,6 +22,7 @@ RookieGamers is a web game portal where every game shares one player account, le
 ## Rules
 
 - No outside ad code (AdSense, GameDistribution and the like). The portal serves ads for every game. To earn from ads, call `rg.ads.rewarded()` when the player chooses to watch for a reward (pause in `before`, resume in `after`, reward only if `rewarded` is true) and `rg.ads.midgame()` between levels, then ask for ads with the `request_ads` tool once the game is live. Show the developer the ad terms first and only pass `agree: true` once they accept. Accepting puts the game in the ad loop at once: until it passes review for paid ads it shows only other games' clips, unpaid, and its clips run in theirs. Paid ads, and the 70% share, start once it's approved.
+- Sound: follow the portal's mute button. Apply `rg.audio.muted()` at start and `rg.audio.onChange(muted => ...)` to every sound (master volume). It also covers ads and hidden tabs. Don't ship a separate mute that ignores it.
 - To sell things, add products with `set_product` and use `rg.store.buy(sku)`, `rg.store.unlock(sku)` (watch ads to unlock) and `rg.store.has(sku)`. Never take payments any other way: all money goes through RookieGamers, which pays the developer.
 - No sign-in of its own (Google, Firebase Auth, Supabase Auth, Auth0, Clerk...). The RookieGamers account is the only login: use `rg.user.login()` and `rg.user.token()`.
 - Give players a reason to share: call `rg.share({ score })` from a button after a good run. Friends who join through it earn the player gems.

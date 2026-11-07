@@ -11,6 +11,8 @@
   const target = () => (B.origins[0] === 'null' ? '*' : null);
   function send(msg, origin) { frame.contentWindow.postMessage(Object.assign({ rg: 1 }, msg), target() || origin); }
   let gameOrigin = null;
+  let muted = false;
+  try { muted = localStorage.getItem('rg.muted') === '1'; } catch (e) { /* private mode */ }
 
   async function token() {
     try {
@@ -167,7 +169,7 @@
     const m = e.data;
     const answer = data => send({ re: m.id, data }, e.origin);
     switch (m.type) {
-      case 'hello': ready = true; return answer({ game: B.game, ref: B.ref, auth: await token() });
+      case 'hello': ready = true; return answer({ game: B.game, ref: B.ref, auth: await token(), muted });
       case 'token': return answer(await token());
       case 'login': return answer(await login());
       case 'share': return answer(await share(m.data));
@@ -209,6 +211,18 @@
     document.getElementById('bm').hidden = b.dataset.b !== 'm';
     document.getElementById('ba').hidden = b.dataset.b !== 'a';
   });
+  // The sound button. The portal can't reach into another site's frame to silence it, so it
+  // tells the game, and the SDK passes it on (rg.audio.onChange). Remembered on this browser.
+  const sound = document.getElementById('soundBtn');
+  function showSound() { if (sound) { sound.textContent = muted ? 'Muted' : 'Sound on'; sound.setAttribute('aria-pressed', String(muted)); } }
+  showSound();
+  if (sound) sound.onclick = () => {
+    muted = !muted;
+    try { localStorage.setItem('rg.muted', muted ? '1' : '0'); } catch (e) { /* private mode */ }
+    showSound();
+    if (ready && gameOrigin) send({ type: 'audio', data: { muted } }, gameOrigin);
+  };
+  document.addEventListener('keydown', e => { if (e.key === 'm' && e.altKey && sound) sound.click(); });
   const fs = document.getElementById('fs');
   if (fs) fs.onclick = () => (frame.requestFullscreen ? frame.requestFullscreen() : frame.webkitRequestFullscreen && frame.webkitRequestFullscreen());
 })();

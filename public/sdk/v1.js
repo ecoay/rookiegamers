@@ -37,7 +37,35 @@
     const m = e.data;
     if (m.re && pending.has(m.re)) { pending.get(m.re)(m.data); pending.delete(m.re); return; }
     if (m.type === 'auth') setAuth(m.data);
+    if (m.type === 'audio') setMute('player', !!(m.data && m.data.muted));
   });
+
+  /* ---------- sound ---------- */
+
+  // The game is muted when the player muted it (the portal's sound button, or rg.audio.set on a
+  // game's own site), while an ad is on screen, and while the tab is hidden. Games follow
+  // rg.audio.onChange; nothing here touches the game's audio directly.
+  const mute = { player: !!store.get('rg.muted'), ad: false, hidden: document.visibilityState === 'hidden' };
+  const audioFns = [];
+  let lastMuted = null;
+  const isMuted = () => mute.player || mute.ad || mute.hidden;
+  function setMute(reason, on) {
+    mute[reason] = on;
+    const now = isMuted();
+    if (now === lastMuted) return;
+    lastMuted = now;
+    audioFns.slice().forEach(fn => { try { fn(now); } catch (err) { console.error(err); } });
+  }
+  lastMuted = isMuted();
+  document.addEventListener('visibilitychange', () => setMute('hidden', document.visibilityState === 'hidden'));
+  const audio = {
+    muted() { return isMuted(); },
+    // fn(muted) runs whenever the answer changes. Returns a function that stops listening.
+    onChange(fn) { if (typeof fn !== 'function') return () => {}; audioFns.push(fn); return () => { const i = audioFns.indexOf(fn); if (i >= 0) audioFns.splice(i, 1); }; },
+    // For a game's own mute button when it runs on its own site. In the portal, the portal's
+    // sound button decides, so this only changes the setting outside it.
+    set(muted) { if (S.mode === 'portal') return isMuted(); store.set('rg.muted', !!muted); setMute('player', !!muted); return isMuted(); },
+  };
 
   function setAuth(d) {
     const before = S.user && S.user.id;
@@ -78,7 +106,7 @@
     if (opts.test || qs.get('rg_test') === '1') { S.mode = 'test'; S.test = { scores: [] }; S.user = { id: 'p_test', name: 'Test Player', avatar: null, level: 3, xp: 420, title: 'Test champion · Jan 2026', guild: null, adult: false }; log('test mode'); return ok({ mode: 'test' }); }
     if (inFrame) {
       const w = await ask('hello', { game: S.game, sdk: 1 }, 1500);
-      if (w && w.game === S.game) { S.mode = 'portal'; S.ref = w.ref || S.ref; setAuth(w.auth); log('portal mode'); return ok({ mode: 'portal' }); }
+      if (w && w.game === S.game) { S.mode = 'portal'; S.ref = w.ref || S.ref; setAuth(w.auth); setMute('player', !!w.muted); log('portal mode'); return ok({ mode: 'portal' }); }
     }
     S.mode = 'standalone';
     const saved = store.get('rg.auth.' + S.game);
@@ -320,25 +348,26 @@
     await ready(); o = o || {};
     const sku = o.sku ? String(o.sku) : undefined;
     const hook = fn => { if (typeof fn === 'function') try { fn(); } catch (e) { console.error(e); } };
+    const before = () => { setMute('ad', true); hook(o.before); }, after = () => { hook(o.after); setMute('ad', false); };
     let r;
     if (S.mode === 'test') {
-      hook(o.before);
+      before();
       await new Promise(res => { toast('Test ad (' + format + ')'); setTimeout(res, 1200); });
       r = { shown: true, rewarded: format === 'rewarded', receipt: format === 'rewarded' ? 'test-receipt' : undefined };
       if (sku) { S.test.owned = S.test.owned || []; if (!S.test.owned.includes(sku)) S.test.owned.push(sku); r.unlocked = true; r.sku = sku; }
-      hook(o.after);
+      after();
       return ok(r);
     }
     if (S.mode === 'portal') {
-      hook(o.before);
+      before();
       r = await ask('ad', { format, sku }, 4 * 60000) || { shown: false, rewarded: false };
     } else {
       const start = await call('POST', '/ads/start', { game: S.game, format, sku, mode: 'standalone' }, true);
       if (!start.ok || !start.fill) return ok({ shown: false, rewarded: false, reason: start.reason || start.error, signin: !!start.signin });
-      hook(o.before);
+      before();
       r = await adFrame(start.url, start.view);
     }
-    hook(o.after);
+    after();
     if (r.error) return bad(r.error);
     return ok(Object.assign({ shown: false, rewarded: false }, r));
   }
@@ -392,7 +421,7 @@
   };
   const wallet = { available: false, async get() { return null; } };
 
-  window.rg = { version: '1.2.0', portal: PORTAL, init, game, user, scores, fame, promo, share, data, invite, store: storeApi, guild, ads, wallet,
+  window.rg = { version: '1.3.0', portal: PORTAL, init, game, user, scores, fame, promo, share, data, invite, store: storeApi, guild, ads, audio, wallet,
     get mode() { return S.mode; } };
   if (SCRIPT && SCRIPT.dataset.game) init({ game: SCRIPT.dataset.game });
 })();

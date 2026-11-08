@@ -82,3 +82,38 @@ test('a player already wearing a Rookie Gamer keeps it', async () => {
   await migrate(DB);
   assert.equal((await ownedIcons(DB, 'p1')).rookie, 'earned');
 });
+
+test('frames: earned at milestones, bought with gems, worn on the public profile', async () => {
+  const { buyFrame, equipFrame, ownedFrames, claimFrames } = await import('../src/frames.js');
+  const DB = await db(250);
+  assert.equal((await buyFrame(DB, 'p1', 'inferno')).status, 402, 'costs 400');
+  assert.equal((await buyFrame(DB, 'p1', 'neon')).gems, 50);
+  assert.equal((await buyFrame(DB, 'p1', 'neon')).status, 409);
+  assert.equal((await buyFrame(DB, 'p1', 'bronze')).status, 404, 'earned frames are not for sale');
+  assert.equal((await equipFrame(DB, 'p1', 'bronze')).status, 403);
+  await DB.prepare('UPDATE players SET xp = 300 WHERE id = ?').bind('p1').run();
+  await claimFrames(DB, await getPlayer(DB, 'p1'));
+  assert.equal((await ownedFrames(DB, 'p1')).bronze, 'earned');
+  await equipFrame(DB, 'p1', 'neon');
+  assert.equal(publicPlayer(await getPlayer(DB, 'p1')).frame, 'neon');
+});
+
+test('the profile shows your inventory with icons, frames and trophies', async () => {
+  const { register } = await import('node:module');
+  register('./md-loader.mjs', import.meta.url);
+  const { page } = await import('../src/pages.js');
+  const { sha256 } = await import('../src/db.js');
+  const DB = await db(0);
+  const id = 'p' + 'a'.repeat(20), t = Date.now(), tok = 'x'.repeat(40);
+  await DB.prepare("INSERT INTO players (id, name, gems, xp, created_at, seen_at) VALUES (?, 'Ada', 0, 300, ?, ?)").bind(id, t, t).run();
+  await DB.prepare('INSERT INTO sessions (token, player_id, created_at) VALUES (?, ?, ?)').bind(await sha256(tok), id, t).run();
+  const url = new URL(`https://rookiegamers.com/u/${id}`), env = { SITE_URL: 'https://rookiegamers.com' };
+  const visitor = await (await page(url.pathname, url, env, DB, new Request(url))).text();
+  assert.match(visitor, /<h2>Trophies<\/h2>/, 'visitors see the trophy case');
+  assert.ok(!visitor.includes('id="inventory"'), 'only you see your inventory');
+  const own = await (await page(url.pathname, url, env, DB, new Request(url, { headers: { cookie: `rg_sid=${tok}` } }))).text();
+  assert.match(own, /id="inventory"/);
+  assert.match(own, /data-tab="icons"[\s\S]*data-tab="frames"[\s\S]*data-tab="trophies"/);
+  assert.match(own, /Your letter/);
+  assert.match(own, /data-frame="bronze"/, 'level 3 earned the bronze frame, ready to wear');
+});

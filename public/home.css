@@ -212,3 +212,16 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .feat { position: absolute; top: 8px; left: 8px; display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px 3px 7px; border-radius: 7px; background: var(--lime); color: var(--ink); font-size: 12px; font-weight: 700; box-shadow: 0 2px 6px #0008; }
 .feat .ic { width: 14px; height: 14px; fill: currentColor; }
 .gc[data-featured="1"] { border-color: #c8f53a88; }
+/* Icon frames (src/frames.js): a gradient ring around the icon, the inside kept dark. */
+.av{display:inline-flex;align-items:center;justify-content:center;flex:none;border-radius:50%;line-height:0}
+.av img{display:block;object-fit:contain}
+.av[class*=" fr-"]{border:3px solid transparent;background:linear-gradient(var(--av-bg,#221e33),var(--av-bg,#221e33)) padding-box,var(--ring,transparent) border-box}
+.fr-bronze{--ring:linear-gradient(135deg,#f6c08f,#8a4b1f 50%,#d9925a)}
+.fr-silver{--ring:linear-gradient(135deg,#ffffff,#8c94a6 50%,#e3e7ef)}
+.fr-scenespot{--ring:linear-gradient(135deg,#fff1b0,#f5b82e 45%,#b97400);box-shadow:0 0 12px rgba(245,184,46,.55)}
+.fr-champion{--ring:conic-gradient(#ffd76a,#8f6bff,#ffd76a,#8f6bff,#ffd76a);box-shadow:0 0 14px rgba(143,107,255,.6)}
+.fr-neon{--ring:linear-gradient(135deg,#2ef2ff,#8f6bff);box-shadow:0 0 12px rgba(46,242,255,.6)}
+.fr-inferno{--ring:linear-gradient(160deg,#ffe14d,#ff5c39 45%,#b3124f);box-shadow:0 0 14px rgba(255,92,57,.6)}
+.fr-rainbow{--ring:conic-gradient(#ff4d4d,#ffb84d,#fff04d,#4dff88,#4dd2ff,#9b6bff,#ff4dd2,#ff4d4d)}
+.fr-diamond{--ring:conic-gradient(#ffffff,#9fe6ff,#ffffff,#b9c2ff,#ffffff,#9fe6ff,#ffffff);box-shadow:0 0 16px rgba(170,225,255,.75)}
+.b.me .av img{object-fit:contain;border-radius:0}.b.me .av[class*=" fr-"]{border-width:2px}

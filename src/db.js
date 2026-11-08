@@ -4,6 +4,7 @@
 import { SEED_GAMES } from './catalog.js';
 import { migrateMoney } from './money.js';
 import { ICON, iconURI, refundRetired, keepWornRookie } from './icons.js';
+import { FRAME } from './frames.js';
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS players (id TEXT PRIMARY KEY, name TEXT NOT NULL, hue INTEGER NOT NULL DEFAULT 0, email TEXT UNIQUE,
@@ -69,6 +70,8 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS titles (player_id TEXT NOT NULL, title TEXT NOT NULL, game TEXT, month TEXT, at INTEGER NOT NULL, PRIMARY KEY (player_id, title))`,
   // Profile icons a player owns. source: 'shop' (bought with gems), 'earned' (a milestone) or 'minted'.
   `CREATE TABLE IF NOT EXISTS icons_owned (player_id TEXT NOT NULL, icon TEXT NOT NULL, source TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (player_id, icon))`,
+  // Icon frames a player owns (src/frames.js), same sources as icons.
+  `CREATE TABLE IF NOT EXISTS frames_owned (player_id TEXT NOT NULL, frame TEXT NOT NULL, source TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (player_id, frame))`,
   `CREATE TABLE IF NOT EXISTS submits (game TEXT NOT NULL, player_id TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (game, player_id))`,
 ];
 
@@ -83,6 +86,8 @@ const COLUMNS = [
   'ALTER TABLE games ADD COLUMN featured_at INTEGER',
   // icon: the profile icon the player picked (src/icons.js). Null shows their letter avatar.
   'ALTER TABLE players ADD COLUMN icon TEXT',
+  // frame: the icon frame the player wears (src/frames.js). Null is no frame.
+  'ALTER TABLE players ADD COLUMN frame TEXT',
 ];
 
 export async function migrate(DB) {
@@ -136,7 +141,7 @@ export const levelFor = xp => Math.floor((1 + Math.sqrt(1 + (8 * Math.max(0, xp)
 
 export function publicPlayer(p) {
   if (!p) return null;
-  return { id: p.id, name: p.name, hue: p.hue, avatar: avatarFor(p), level: levelFor(p.xp), xp: p.xp, title: p.title || null, guild: null, adult: !!p.adult_at };
+  return { id: p.id, name: p.name, hue: p.hue, avatar: avatarFor(p), frame: FRAME[p.frame] ? p.frame : null, level: levelFor(p.xp), xp: p.xp, title: p.title || null, guild: null, adult: !!p.adult_at };
 }
 
 // The player's chosen platform icon, or a generated letter avatar. Never a social media picture.

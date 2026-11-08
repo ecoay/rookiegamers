@@ -111,3 +111,36 @@ ul.links li:last-child{border-bottom:0}
 ul.links .ok{color:var(--good);font-weight:600;font-size:14px}
 dialog.share{width:min(460px,calc(100vw - 32px))}
 @media (max-width:560px){.me .muted,.me .gems{display:none}}
+/* Icon frames (src/frames.js): a gradient ring around the icon, the inside kept dark. */
+.av{display:inline-flex;align-items:center;justify-content:center;flex:none;border-radius:50%;line-height:0}
+.av img{display:block;object-fit:contain}
+.av[class*=" fr-"]{border:3px solid transparent;background:linear-gradient(var(--av-bg,#221e33),var(--av-bg,#221e33)) padding-box,var(--ring,transparent) border-box}
+.fr-bronze{--ring:linear-gradient(135deg,#f6c08f,#8a4b1f 50%,#d9925a)}
+.fr-silver{--ring:linear-gradient(135deg,#ffffff,#8c94a6 50%,#e3e7ef)}
+.fr-scenespot{--ring:linear-gradient(135deg,#fff1b0,#f5b82e 45%,#b97400);box-shadow:0 0 12px rgba(245,184,46,.55)}
+.fr-champion{--ring:conic-gradient(#ffd76a,#8f6bff,#ffd76a,#8f6bff,#ffd76a);box-shadow:0 0 14px rgba(143,107,255,.6)}
+.fr-neon{--ring:linear-gradient(135deg,#2ef2ff,#8f6bff);box-shadow:0 0 12px rgba(46,242,255,.6)}
+.fr-inferno{--ring:linear-gradient(160deg,#ffe14d,#ff5c39 45%,#b3124f);box-shadow:0 0 14px rgba(255,92,57,.6)}
+.fr-rainbow{--ring:conic-gradient(#ff4d4d,#ffb84d,#fff04d,#4dff88,#4dd2ff,#9b6bff,#ff4dd2,#ff4d4d)}
+.fr-diamond{--ring:conic-gradient(#ffffff,#9fe6ff,#ffffff,#b9c2ff,#ffffff,#9fe6ff,#ffffff);box-shadow:0 0 16px rgba(170,225,255,.75)}
+.me .av img{width:30px;height:30px}.me .av[class*=" fr-"]{border-width:2px}
+.prof .av img{width:84px;height:84px}.prof .av[class*=" fr-"]{border-width:4px}.prof a{line-height:0}
+.av.big img{width:84px;height:84px}.av.big[class*=" fr-"]{border-width:4px}
+/* Inventory and Diamond Shop cards */
+.icon-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;margin:12px 0 20px}
+.icon-card{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 10px;border:1px solid var(--line);border-radius:16px;background:var(--panel);text-align:center}
+.icon-card.owned{border-color:var(--violet)}.icon-card.locked .av{opacity:.55}
+.icon-card>img{object-fit:contain;filter:drop-shadow(0 4px 10px rgba(0,0,0,.35))}
+.icon-card .tag{font-size:13px;font-weight:600;color:var(--violet)}
+.icon-card button[disabled]{opacity:.45;cursor:not-allowed}
+.inv{scroll-margin-top:80px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 4px}
+.tabs button{border:1px solid var(--line);border-radius:999px;padding:8px 16px;background:var(--panel2);color:var(--dim);font:700 14px system-ui,sans-serif;cursor:pointer}
+.tabs button span{margin-left:4px;opacity:.7}
+.tabs button[aria-selected=true]{background:var(--violet);border-color:var(--violet);color:#fff}
+/* Trophy case */
+.trophies{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;margin:12px 0 20px}
+.trophy{display:flex;flex-direction:column;align-items:center;gap:6px;padding:16px 10px;border:1px solid var(--line);border-radius:16px;background:var(--panel);text-align:center}
+.trophy svg{width:48px;height:48px;color:var(--violet)}
+.trophy.gold svg{color:#f5b82e}.trophy.silver svg{color:#c9ced9}.trophy.bronze svg{color:#cd8a52}
+.trophy.gold{border-color:#f5b82e}.trophy.locked{opacity:.45}.trophy.locked svg{color:var(--dim)}

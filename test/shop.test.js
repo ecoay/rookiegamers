@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fakeD1 } from './d1.js';
 import { migrate, getPlayer, publicPlayer } from '../src/db.js';
-import { buyIcon, equipIcon, ownedIcons, claimEarned, playGems, ICONS } from '../src/icons.js';
+import { buyIcon, equipIcon, ownedIcons, claimEarned, playGems, pickIcon, canPick, ICONS } from '../src/icons.js';
 import { grantGems } from '../src/growth.js';
 
 async function db(gems = 0) {
@@ -12,7 +12,7 @@ async function db(gems = 0) {
   return DB;
 }
 
-test("every icon has its image file", async () => { const { existsSync } = await import("node:fs"); for (const i of ICONS) assert.ok(existsSync(new URL(`../public/icons/${i.file || i.id}.webp`, import.meta.url)), i.id); });
+test("every icon has its image file", async () => { const { existsSync } = await import("node:fs"); for (const i of ICONS.filter(i => !i.soon)) assert.ok(existsSync(new URL(`../public/icons/${i.file || i.id}.webp`, import.meta.url)), i.id); });
 
 test('buying spends gems once, and you can then wear it', async () => {
   const DB = await db(160);
@@ -42,9 +42,10 @@ test('the first set: kept slots carry over, dropped ones are refunded', async ()
   assert.equal((await getPlayer(DB, 'p1')).gems, 100, 'refunds once');
 });
 
-test('earned icons unlock from milestones, and the starter is always owned', async () => {
+test('players start with only their letter, and earned icons unlock from milestones', async () => {
   const DB = await db();
-  const o = await ownedIcons(DB, 'p1'); assert.ok(o.rookie && o['rookie-2']);
+  assert.deepEqual(await ownedIcons(DB, 'p1'), {});
+  assert.match(publicPlayer(await getPlayer(DB, 'p1')).avatar, /^data:image\/svg/);
   await DB.prepare('UPDATE players SET xp = 5000 WHERE id = ?').bind('p1').run();
   await claimEarned(DB, await getPlayer(DB, 'p1'));
   assert.equal((await ownedIcons(DB, 'p1')).veteran, 'earned');
@@ -59,4 +60,25 @@ test('playing earns 5 gems per 10 minutes, capped at 30 a day', async () => {
   await DB.prepare("UPDATE plays SET ms = ? WHERE id = 'x'").bind(300 * 60 * 1000).run();
   await playGems(DB, 'p1', grantGems);
   assert.equal((await getPlayer(DB, 'p1')).gems, 30);
+});
+
+test('at level 5 a player picks one Rookie Gamer, once', async () => {
+  const DB = await db();
+  assert.equal((await pickIcon(DB, await getPlayer(DB, 'p1'), 'rookie')).status, 403, 'too early');
+  await DB.prepare('UPDATE players SET xp = 1000 WHERE id = ?').bind('p1').run();
+  let p = await getPlayer(DB, 'p1');
+  await claimEarned(DB, p);
+  assert.ok(!(await ownedIcons(DB, 'p1')).rookie, 'not granted automatically');
+  assert.ok(canPick(p, {}).rookie);
+  assert.equal((await pickIcon(DB, p, 'rookie-2')).ok, true);
+  assert.equal((await getPlayer(DB, 'p1')).icon, 'rookie-2');
+  assert.equal((await pickIcon(DB, p, 'rookie')).status, 409, 'only one');
+  assert.ok(!canPick(p, await ownedIcons(DB, 'p1')).rookie);
+});
+
+test('a player already wearing a Rookie Gamer keeps it', async () => {
+  const DB = await db();
+  await DB.prepare("UPDATE players SET icon = 'rookie' WHERE id = 'p1'").run();
+  await migrate(DB);
+  assert.equal((await ownedIcons(DB, 'p1')).rookie, 'earned');
 });

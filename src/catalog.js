@@ -15,8 +15,9 @@ export const SEED_GAMES = [
     blurb: '', tags: ['social'], color: '#3ddc97',
   },
   // Listed but not live until their URLs are in. Set url and origins, then publish.
-  // Hosted build from handofnine (npm run build:rookiegamers). The board holds official Daily Challenge results.
-  { slug: 'handofnine', title: 'Hand of Nine', kind: 'hosted', live: false, developer: 'ecoay',
+  // Standalone at handofnine.com (its own Cloudflare site, RookieGamers sign-in only); the portal frames it.
+  // The board holds official Daily Challenge results. Goes live once handofnine.com is up.
+  { slug: 'handofnine', title: 'Hand of Nine', kind: 'linked', url: 'https://handofnine.com/', origins: ['https://handofnine.com'], live: false, developer: 'ecoay',
     blurb: 'Arrange nine cards on a 3x3 table, match twelve touching edges, and chase a Perfect Hand worth 2400.', tags: ['cards', 'puzzle'], color: '#d4a64a',
     score_label: 'Daily hand', score_mode: 'best', score_order: 'desc', max_score: 2400 },
   { slug: 'youcult', title: 'YouCult', kind: 'hosted', live: false, developer: 'ecoay',

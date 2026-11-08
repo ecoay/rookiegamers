@@ -6,6 +6,7 @@ import * as dev from './dev.js';
 import { createShare } from './growth.js';
 import { deleteAccount } from './account.js';
 import { SHOWN, EARN, iconURI, ownedIcons, claimEarned, buyIcon, equipIcon, pickIcon, canPick } from './icons.js';
+import { FRAMES, FRAME_EARN, ownedFrames, claimFrames, buyFrame, equipFrame } from './frames.js';
 import { moneyV1, moneyDev } from './money-api.js';
 
 export const json = (data, status = 200, extra = {}) => {
@@ -168,18 +169,23 @@ export async function apiPortal(req, env, DB, url) {
     await claimEarned(DB, p);
     const owned = await ownedIcons(DB, pid);
     const pickable = canPick(p, owned);
-    return json({ gems: p.gems, equipped: p.icon || null, icons: SHOWN.map(i => ({ id: i.id, name: i.name, price: i.price || null, earn: i.earn ? EARN[i.earn] : null, owned: !!owned[i.id], pickable: !!(i.pick && pickable[i.pick]), image: iconURI(i) })) });
+    await claimFrames(DB, p);
+    const frames = await ownedFrames(DB, pid);
+    return json({ gems: p.gems, equipped: p.icon || null, frame: p.frame || null,
+      frames: FRAMES.map(f => ({ id: f.id, name: f.name, price: f.price || null, earn: f.earn ? FRAME_EARN[f.earn] : null, owned: !!frames[f.id] })), icons: SHOWN.map(i => ({ id: i.id, name: i.name, price: i.price || null, earn: i.earn ? EARN[i.earn] : null, owned: !!owned[i.id], pickable: !!(i.pick && pickable[i.pick]), image: iconURI(i) })) });
   }
   if (path === '/api/shop/pick' && method === 'POST') {
     const r = await pickIcon(DB, await getPlayer(DB, pid), String((await readJSON(req)).icon || ''));
     return json(r, r.status);
   }
   if (path === '/api/shop/buy' && method === 'POST') {
-    const r = await buyIcon(DB, pid, String((await readJSON(req)).icon || ''));
+    const b = await readJSON(req);
+    const r = b.frame !== undefined ? await buyFrame(DB, pid, String(b.frame || '')) : await buyIcon(DB, pid, String(b.icon || ''));
     return json(r, r.status);
   }
   if (path === '/api/shop/equip' && method === 'POST') {
-    const r = await equipIcon(DB, pid, String((await readJSON(req)).icon || ''));
+    const b = await readJSON(req);
+    const r = b.frame !== undefined ? await equipFrame(DB, pid, String(b.frame || '')) : await equipIcon(DB, pid, String(b.icon || ''));
     return json(r, r.status);
   }
   // Deleting the account is final. The body must say {"confirm":"DELETE"} so it can't happen by accident.

@@ -1,4 +1,4 @@
-import { getGame, getPlayer, publicPlayer, gameView, monthKey, monthLabel, levelFor, safeJSON } from './db.js';
+import { getGame, getPlayer, publicPlayer, avatarFor, gameView, monthKey, monthLabel, levelFor, safeJSON } from './db.js';
 import { sessionPlayer, providers, safeNext, setCookie } from './auth.js';
 import { getShare, isBot, countShareClick, validVia, referralStats, gemHistory, GEMS, linkGems, VIA_COOKIE, SHARE_COOKIE, VIA_DAYS, REFERRAL_PLAY_MS } from './growth.js';
 import { frontPage, topScores, fame, sealIfDue } from './play.js';
@@ -9,6 +9,7 @@ import SDK_DOCS from '../docs/SDK.md';
 import { homePage } from './home.js';
 import { canonical, ldJSON } from './seo/site.js';
 import { SHOWN, EARN, iconURI, ownedIcons, claimEarned, canPick, PLAY_GEMS } from './icons.js';
+import { FRAMES, FRAME_EARN, ownedFrames, claimFrames, progress, MILESTONES, hallTrophies } from './frames.js';
 import { FOOTER_LINKS, NEW_PAGES, DEV_JSONLD, DOCS_JSONLD, HALL_OF_FAME_JSONLD, PLAY_PAGES } from './seo/copy.js';
 
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -17,6 +18,11 @@ const html = (body, status = 200, headers = {}) => new Response(body, { status, 
 const data = v => JSON.stringify(v).replace(/</g, '\\u003c');
 
 const GEM = '<svg class="gem" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1h8l4 5-8 9-8-9z" fill="currentColor"/><path d="M0 6h16M4 1l4 14M12 1 8 15" stroke="rgba(0,0,0,.25)" fill="none"/></svg>';
+// A player's icon inside the frame they wear. Every avatar on the site goes through this.
+const avatar = (pub, alt = '') => `<span class="av${pub.frame ? ` fr-${esc(pub.frame)}` : ''}"><img src="${esc(pub.avatar)}" alt="${esc(alt)}"></span>`;
+const RANK = r => r === 1 ? '1st' : r === 2 ? '2nd' : r === 3 ? '3rd' : `${r}th`;
+const MEDAL = r => r === 1 ? 'gold' : r === 2 ? 'silver' : r === 3 ? 'bronze' : 'plain';
+const CUP = '<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M14 6h20v10a10 10 0 0 1-20 0z" fill="currentColor"/><path d="M14 9H7v4a7 7 0 0 0 7 7M34 9h7v4a7 7 0 0 1-7 7" fill="none" stroke="currentColor" stroke-width="3"/><path d="M21 26h6v8h-6z" fill="currentColor"/><path d="M14 36h20v6H14z" fill="currentColor"/><path d="M18 9v7" stroke="rgba(255,255,255,.45)" stroke-width="2.5" stroke-linecap="round"/></svg>';
 const gemCount = n => `<span class="gems" title="Gems">${GEM}${Number(n || 0).toLocaleString('en-US')}</span>`;
 
 function layout({ title, titleFull, desc, me, active, body, url, scripts = '', og = {}, canonicalPath, jsonld, robots }) {
@@ -32,7 +38,7 @@ ${url ? `<meta property="og:url" content="${esc(url)}">` : ''}${canonicalPath ? 
 <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/site.css">${(jsonld || []).map(block => `<script type="application/ld+json">${ldJSON(block)}</script>`).join('')}</head><body>
 <header class="top"><div class="wrap"><a class="logo" href="/"><b>RG</b>RookieGamers</a>
 <nav class="main">${nav.map(([h, l]) => `<a href="${h}"${active === h ? ' aria-current="page"' : ''}>${l}</a>`).join('')}</nav>
-${me ? `<a class="me" href="/u/${esc(me.id)}"><img src="${esc(me.avatar)}" alt="">${esc(me.name)} <span class="muted">Lv ${me.level}</span>${gemCount(me.gems)}</a>` : `<a class="btn small" href="/signin?next=${encodeURIComponent(active || '/')}" id="signinLink">Sign in</a>`}
+${me ? `<a class="me" href="/u/${esc(me.id)}#inventory" title="Your profile and inventory">${avatar(me)}${esc(me.name)} <span class="muted">Lv ${me.level}</span>${gemCount(me.gems)}</a>` : `<a class="btn small" href="/signin?next=${encodeURIComponent(active || '/')}" id="signinLink">Sign in</a>`}
 </div></header><main><div class="wrap">${body}</div></main>
 <footer class="foot"><div class="wrap"><span>RookieGamers</span>${FOOTER_LINKS.map(([h, l]) => `<a href="${h}">${l}</a>`).join('')}<span>Accounts are for players 13 and up.</span></div></footer>
 ${scripts}</body></html>`;
@@ -180,6 +186,50 @@ async function myGrowth(DB, env, p) {
 ${history.length ? `<div class="panel"><h3>Recent gems</h3><ul class="links">${history.map(h => `<li><span>${esc((REASONS[h.reason] || (() => h.reason))(h))}<br><span class="muted small">${new Date(h.at).toISOString().slice(0, 10)}</span></span><span class="gems">+${h.amount}</span></li>`).join('')}</ul></div>` : ''}</div>`;
 }
 
+// The trophy case: Hall of Fame finishes, then milestones. Your own profile also shows the locked ones.
+function trophyCase(hall, g, mine) {
+  const got = MILESTONES.filter(m => m.got(g)), locked = mine ? MILESTONES.filter(m => !m.got(g)) : [];
+  if (!hall.length && !got.length && !locked.length) return '<p class="muted">No trophies yet.</p>';
+  return `<div class="trophies">${hall.map(h => `<div class="trophy ${MEDAL(h.rank)}">${CUP}<b>${RANK(h.rank)} · ${esc(h.title)}</b><span class="muted small">Hall of Fame, ${esc(monthLabel(h.month))}</span></div>`).join('')}
+${got.map(m => `<div class="trophy earned">${CUP}<b>${esc(m.name)}</b><span class="muted small">${esc(m.how)}</span></div>`).join('')}
+${locked.map(m => `<div class="trophy locked">${CUP}<b>${esc(m.name)}</b><span class="muted small">${esc(m.how)}</span></div>`).join('')}</div>`;
+}
+
+// Your inventory on your own profile: the icons and frames you own (wear one with a tap) and your trophies.
+async function inventoryHTML(DB, p, pub, trophies) {
+  const [icons, frames] = await Promise.all([ownedIcons(DB, p.id), ownedFrames(DB, p.id)]);
+  const pickable = canPick(p, icons);
+  const letter = avatarFor({ ...p, icon: null });
+  const iconCards = [
+    `<div class="icon-card${!p.icon ? ' owned' : ''}"><img src="${esc(letter)}" alt="" width="96" height="96"><b>Your letter</b>${!p.icon ? '<span class="tag">Wearing</span>' : '<button class="btn small" data-equip="">Wear</button>'}</div>`,
+    ...SHOWN.filter(i => icons[i.id] || (i.pick && pickable[i.pick])).map(i => `<div class="icon-card${icons[i.id] ? ' owned' : ''}"><img src="${esc(iconURI(i))}" alt="" width="96" height="96" loading="lazy"><b>${esc(i.name)}</b>${
+      !icons[i.id] ? `<button class="btn small" data-pick="${esc(i.id)}">Pick this one</button>` : p.icon === i.id ? '<span class="tag">Wearing</span>' : `<button class="btn small" data-equip="${esc(i.id)}">Wear</button>`}</div>`),
+  ];
+  const sample = f => `<span class="av big fr-${esc(f)}"><img src="${esc(pub.avatar)}" alt=""></span>`;
+  const frameCards = [
+    `<div class="icon-card${!p.frame ? ' owned' : ''}"><span class="av big"><img src="${esc(pub.avatar)}" alt=""></span><b>No frame</b>${!p.frame ? '<span class="tag">Wearing</span>' : '<button class="btn small" data-frame="">Wear</button>'}</div>`,
+    ...FRAMES.map(f => `<div class="icon-card${frames[f.id] ? ' owned' : ' locked'}">${sample(f.id)}<b>${esc(f.name)}</b>${
+      frames[f.id] ? (p.frame === f.id ? '<span class="tag">Wearing</span>' : `<button class="btn small" data-frame="${esc(f.id)}">Wear</button>`)
+      : f.price ? `<a class="btn ghost small" href="/shop#frames">${GEM}${f.price.toLocaleString('en-US')}</a>` : `<span class="muted small">${esc(FRAME_EARN[f.earn])}</span>`}</div>`),
+  ];
+  const nIcons = Object.keys(icons).length, nFrames = Object.keys(frames).length;
+  return `<section id="inventory" class="inv"><h2>Inventory</h2>
+<div class="tabs" role="tablist"><button type="button" role="tab" data-tab="icons" aria-selected="true">Icons <span>${nIcons + 1}</span></button><button type="button" role="tab" data-tab="frames" aria-selected="false">Frames <span>${nFrames}</span></button><button type="button" role="tab" data-tab="trophies" aria-selected="false">Trophies</button></div>
+<div class="pane" data-pane="icons"><div class="icon-grid">${iconCards.join('')}</div><p class="muted">Earn more icons by playing, or spend gems in the <a href="/shop">Diamond Shop</a>.</p></div>
+<div class="pane" data-pane="frames" hidden><div class="icon-grid">${frameCards.join('')}</div><p class="muted">A frame goes around your icon everywhere it shows.</p></div>
+<div class="pane" data-pane="trophies" hidden>${trophies}</div>
+<div id="invMsg"></div></section>`;
+}
+
+const INVENTORY_JS = `
+const tabs=document.querySelectorAll('.inv [data-tab]');tabs.forEach(t=>t.onclick=()=>{tabs.forEach(x=>x.setAttribute('aria-selected',x===t));document.querySelectorAll('.inv [data-pane]').forEach(p=>p.hidden=p.dataset.pane!==t.dataset.tab);try{localStorage.setItem('rg_inv',t.dataset.tab)}catch(e){}});
+try{const s=localStorage.getItem('rg_inv');const t=s&&document.querySelector('.inv [data-tab="'+s+'"]');if(t)t.click()}catch(e){}
+document.addEventListener('click',async e=>{const b=e.target.closest('.inv [data-equip],.inv [data-frame],.inv [data-pick]');if(!b)return;
+if(b.dataset.pick!==undefined&&!confirm('Pick this Rookie Gamer? You only get to pick one.'))return;b.disabled=true;
+const body=b.dataset.frame!==undefined?{frame:b.dataset.frame}:{icon:b.dataset.equip!==undefined?b.dataset.equip:b.dataset.pick};
+const r=await fetch(b.dataset.pick!==undefined?'/api/shop/pick':'/api/shop/equip',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+if(r.ok){location.reload();return}b.disabled=false;const j=await r.json().catch(()=>({}));const m=document.getElementById('invMsg');m.innerHTML='<div class="note err"></div>';m.firstChild.textContent=j.error||'That didn\\'t work.'});`;
+
 async function profilePage(DB, req, env, id) {
   const me = await viewer(DB, req);
   const p = await getPlayer(DB, id);
@@ -194,16 +244,23 @@ async function profilePage(DB, req, env, id) {
   ]);
   const mine = me && me.id === id;
   const growth = mine ? await myGrowth(DB, env, p) : '';
-  const body = `<div class="prof"><img src="${esc(pub.avatar)}" alt=""><div><h1 style="margin:0">${esc(pub.name)}</h1>${pub.title ? `<div style="color:var(--violet);font-weight:600">${esc(pub.title)}</div>` : ''}
+  const g = await progress(DB, p);
+  if (mine) { await claimEarned(DB, p); await claimFrames(DB, p, g); }
+  const hall = await hallTrophies(DB, id);
+  const trophies = trophyCase(hall, g, mine);
+  const inventory = mine ? await inventoryHTML(DB, p, pub, trophies) : '';
+  const body = `<div class="prof">${mine ? `<a href="#inventory" title="Change your icon and frame">${avatar(pub)}</a>` : avatar(pub)}<div><h1 style="margin:0">${esc(pub.name)}</h1>${pub.title ? `<div style="color:var(--violet);font-weight:600">${esc(pub.title)}</div>` : ''}
 <div class="muted">Level ${lv} · ${pub.xp.toLocaleString('en-US')} XP</div><div class="xp" style="margin-top:6px"><i style="width:${Math.min(100, Math.round((pub.xp - floor) / Math.max(1, next - floor) * 100))}%"></i></div></div></div>
+${inventory}
 ${mine ? `<h2>Your profile</h2><form class="form" id="profForm"><input name="name" maxlength="18" value="${esc(pub.name)}" aria-label="Display name">
 ${titles.results.length ? `<select name="title" style="padding:10px;border-radius:12px;background:var(--panel2);color:var(--text);border:1px solid var(--line)"><option value="">No title</option>${titles.results.map(t => `<option${t.title === pub.title ? ' selected' : ''}>${esc(t.title)}</option>`).join('')}</select>` : ''}
 <div style="display:flex;gap:8px"><button class="btn" type="submit">Save</button><button class="btn ghost" type="button" id="signOut">Sign out</button></div><div id="profMsg"></div></form>${growth}
 <details class="danger" style="margin-top:28px"><summary class="muted">Delete my account</summary><p class="muted">This removes your profile, linked sign-ins, scores, gems and play history for good. See <a href="/data-deletion">data deletion</a>.</p>
 <form class="form" id="delForm"><input name="confirm" placeholder="Type DELETE" aria-label="Type DELETE to confirm" autocomplete="off"><button class="btn ghost" type="submit">Delete my account</button><div id="delMsg"></div></form></details>` : ''}
 <h2>Games played</h2>${games.results.length ? `<table class="t"><tr><th>Game</th><th>Best</th><th>Played</th></tr>${games.results.map(r => `<tr><td><a href="/play/${esc(r.slug)}">${esc(r.title)}</a></td><td>${r.best == null ? '<span class="muted">-</span>' : `${r.best.toLocaleString('en-US')} <span class="muted">${esc(r.score_label.toLowerCase())}</span>`}</td><td>${Math.max(1, Math.round(r.ms / 60000))} min</td></tr>`).join('')}</table>` : '<p class="muted">No games yet.</p>'}
+${mine ? '' : `<h2>Trophies</h2>${trophies}`}
 ${titles.results.length ? `<h2>Titles</h2><ul>${titles.results.map(t => `<li>${esc(t.title)}</li>`).join('')}</ul>` : ''}`;
-  const script = mine ? `<script>
+  const script = mine ? `<script>${INVENTORY_JS}
 document.getElementById('profForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);const r=await fetch('/api/me',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:f.get('name'),title:f.has('title')?f.get('title'):undefined})});document.getElementById('profMsg').innerHTML=r.ok?'<div class="note ok">Saved.</div>':'<div class="note err">Couldn\\'t save.</div>';if(r.ok)setTimeout(()=>location.reload(),500)};
 document.getElementById('delForm').onsubmit=async e=>{e.preventDefault();const c=new FormData(e.target).get('confirm');const r=await fetch('/api/me/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({confirm:c})});const j=await r.json().catch(()=>({}));if(r.ok){location.href='/data-deletion?done=1';return}document.getElementById('delMsg').innerHTML='<div class="note err"></div>';document.getElementById('delMsg').firstChild.textContent=j.error||'Could not delete.'};
 document.getElementById('signOut').onclick=async()=>{await fetch('/api/auth/signout',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});location.href='/'};
@@ -354,10 +411,13 @@ async function docs(DB, req, env) {
 // pictures are never used as platform icons.
 async function shopPage(DB, req, env) {
   const me = await viewer(DB, req);
-  let owned = {}, equipped = null, pickable = {};
+  let owned = {}, equipped = null, pickable = {}, frames = {}, frameOn = null;
   if (me) {
     const p = await getPlayer(DB, me.id);
     await claimEarned(DB, p);
+    await claimFrames(DB, p);
+    frames = await ownedFrames(DB, me.id);
+    frameOn = p.frame || null;
     owned = await ownedIcons(DB, me.id);
     equipped = p.icon || null;
     pickable = canPick(p, owned);
@@ -372,18 +432,31 @@ async function shopPage(DB, req, env) {
     return `<div class="icon-card${has ? ' owned' : ''}"><img src="${esc(iconURI(i))}" alt="" width="112" height="112" loading="lazy"><b>${esc(i.name)}</b>${i.earn ? '<span class="muted small">Earned</span>' : ''}${action}</div>`;
   };
   const shop = SHOWN.filter(i => i.price), earned = SHOWN.filter(i => i.earn);
+  const preview = me ? me.avatar : iconURI('rookie');
+  const frameCard = f => {
+    const has = !!frames[f.id];
+    const action = has ? (frameOn === f.id ? '<span class="tag">Wearing</span>' : `<button class="btn small" data-wear-frame="${esc(f.id)}">Wear</button>`)
+      : f.earn ? `<span class="muted small">${esc(FRAME_EARN[f.earn])}</span>`
+      : !me ? `<a class="btn small" href="/signin?next=%2Fshop">${GEM}${f.price.toLocaleString('en-US')}</a>`
+      : `<button class="btn small" data-buy-frame="${esc(f.id)}"${me.gems < f.price ? ' disabled' : ''}>${GEM}${f.price.toLocaleString('en-US')}</button>`;
+    return `<div class="icon-card${has ? ' owned' : ''}"><span class="av big fr-${esc(f.id)}"><img src="${esc(preview)}" alt=""></span><b>${esc(f.name)}</b>${f.earn ? '<span class="muted small">Earned</span>' : ''}${action}</div>`;
+  };
   const body = `<style>.icon-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;margin:12px 0 28px}.icon-card{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 10px;border:1px solid var(--line);border-radius:16px;background:var(--panel);text-align:center}.icon-card.owned{border-color:var(--violet)}.icon-card img{object-fit:contain;filter:drop-shadow(0 4px 10px rgba(0,0,0,.35))}.icon-card .tag{font-size:13px;font-weight:600;color:var(--violet)}.icon-card button[disabled]{opacity:.45;cursor:not-allowed}.icon-card .gem{width:14px;height:14px;vertical-align:-2px;margin-right:4px}</style>
 <h1>Diamond Shop</h1><p class="lede">Spend the gems you earn on icons that show next to your name across RookieGamers.${me ? ` You have ${gemCount(me.gems)}.` : ''}</p>
 <p class="muted">Earn gems by playing any game (${PLAY_GEMS.amount} gems for every ${PLAY_GEMS.every / 60000} minutes, up to ${PLAY_GEMS.amount * PLAY_GEMS.perDay} a day), linking a social network (${GEMS.link} each, ${GEMS.scenespot} for SceneSpot) and inviting friends (${GEMS.referrer}). Gems have no cash value.</p>
 <div id="shopMsg"></div>
 <h2>Icons for gems</h2><div class="icon-grid">${shop.map(card).join('')}</div>
 <h2>Earned icons</h2><p class="muted">Everyone starts with their letter. These can't be bought: hit the milestone and they're yours. At level 5 you pick one Rookie Gamer, and that pick is for keeps.</p><div class="icon-grid">${earned.map(card).join('')}</div>
+<h2 id="frames">Frames</h2><p class="muted">A frame goes around your icon everywhere it shows. Wear one from here or from your <a href="${me ? `/u/${esc(me.id)}#inventory` : '/signin?next=%2Fshop'}">inventory</a>.</p><div class="icon-grid">${FRAMES.map(frameCard).join('')}</div>
 <h2>Minted icons</h2><p class="muted">Minted icons arrive with wallets, for players 18 and up. They're not live yet.</p>
 ${me && equipped ? '<p><button class="btn ghost small" data-equip="">Go back to my letter icon</button></p>' : ''}`;
   const script = me ? `<script>
 const msg=t=>{const m=document.getElementById('shopMsg');m.innerHTML='<div class="note err"></div>';m.firstChild.textContent=t};
 const post=(u,b)=>fetch(u,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)}).then(async r=>({ok:r.ok,j:await r.json().catch(()=>({}))}));
-document.addEventListener('click',async e=>{const b=e.target.closest('[data-buy],[data-equip],[data-pick]');if(!b)return;
+document.addEventListener('click',async e=>{const f=e.target.closest('[data-buy-frame],[data-wear-frame]');if(f){f.disabled=true;const id=f.dataset.buyFrame||f.dataset.wearFrame;
+if(f.dataset.buyFrame){const r=await post('/api/shop/buy',{frame:id});if(!r.ok){f.disabled=false;return msg(r.j.error||'That didn\\'t work.')}}
+await post('/api/shop/equip',{frame:id});location.reload();return}
+const b=e.target.closest('[data-buy],[data-equip],[data-pick]');if(!b)return;
 if(b.dataset.pick!==undefined&&!confirm('Pick this Rookie Gamer? You only get to pick one.'))return;b.disabled=true;
 const r=b.dataset.buy!==undefined?await post('/api/shop/buy',{icon:b.dataset.buy}):b.dataset.pick!==undefined?await post('/api/shop/pick',{icon:b.dataset.pick}):await post('/api/shop/equip',{icon:b.dataset.equip});
 if(!r.ok){b.disabled=false;return msg(r.j.error||'That didn\'t work.')}

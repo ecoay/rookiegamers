@@ -21,6 +21,7 @@ export async function deleteAccount(DB, pid) {
     by('DELETE FROM scores WHERE player_id = ?'),
     by('DELETE FROM titles WHERE player_id = ?'),
     by('DELETE FROM icons_owned WHERE player_id = ?'),
+    by('DELETE FROM frames_owned WHERE player_id = ?'),
     by('DELETE FROM submits WHERE player_id = ?'),
     by('DELETE FROM dev_keys WHERE player_id = ?'),
     by('DELETE FROM developers WHERE player_id = ?'),

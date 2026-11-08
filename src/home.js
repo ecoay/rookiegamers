@@ -104,7 +104,7 @@ ${rail.map(([h, l, ic, on]) => `<a href="${esc(h)}"${on ? ' class="on" aria-curr
 <label class="search">${icon('search')}<input id="q" type="search" placeholder="Search games, creators, tags..." aria-label="Search games, creators, tags" autocomplete="off"><kbd>⌘K</kbd></label>
 <div class="acts">
 <a class="b ai" href="/dev#ai">${icon('sparkles')}<span>Customize with AI</span></a>
-${me ? `<a class="b me" href="/u/${esc(me.id)}"><img src="${esc(me.avatar)}" alt=""><span>${esc(me.name)}</span></a>` : `<a class="b out" href="/signin?next=/">${icon('user')}<span>Sign In</span></a>`}
+${me ? `<a class="b me" href="/u/${esc(me.id)}#inventory"><span class="av${me.frame ? ` fr-${esc(me.frame)}` : ''}"><img src="${esc(me.avatar)}" alt=""></span><span>${esc(me.name)}</span></a>` : `<a class="b out" href="/signin?next=/">${icon('user')}<span>Sign In</span></a>`}
 <button class="b lime" type="button" id="walletBtn">${icon('wallet')}<span>Connect Wallet</span></button>
 </div></header>
 

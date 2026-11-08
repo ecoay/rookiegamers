@@ -3,7 +3,7 @@
 
 import { SEED_GAMES } from './catalog.js';
 import { migrateMoney } from './money.js';
-import { ICON, iconURI } from './icons.js';
+import { ICON, iconURI, refundRetired } from './icons.js';
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS players (id TEXT PRIMARY KEY, name TEXT NOT NULL, hue INTEGER NOT NULL DEFAULT 0, email TEXT UNIQUE,
@@ -90,6 +90,7 @@ export async function migrate(DB) {
   for (const c of COLUMNS) { try { await DB.prepare(c).run(); } catch (e) { if (!/duplicate column/i.test(String(e && e.message))) throw e; } }
   await DB.prepare('CREATE INDEX IF NOT EXISTS players_referred ON players(referred_by)').run();
   await migrateMoney(DB);
+  await refundRetired(DB);
   const t = now();
   await DB.batch(SEED_GAMES.map(g => DB.prepare(
     `INSERT OR IGNORE INTO games (slug, title, kind, url, origins, developer, blurb, tags, color, devices, multiplayer, score_label, score_mode, score_order, max_score, live, released_at, created_at)

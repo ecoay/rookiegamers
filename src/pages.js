@@ -1,6 +1,6 @@
 import { getGame, getPlayer, publicPlayer, gameView, monthKey, monthLabel, levelFor, safeJSON } from './db.js';
 import { sessionPlayer, providers, safeNext, setCookie } from './auth.js';
-import { getShare, isBot, countShareClick, validVia, referralStats, gemHistory, GEMS, VIA_COOKIE, SHARE_COOKIE, VIA_DAYS, REFERRAL_PLAY_MS } from './growth.js';
+import { getShare, isBot, countShareClick, validVia, referralStats, gemHistory, GEMS, linkGems, VIA_COOKIE, SHARE_COOKIE, VIA_DAYS, REFERRAL_PLAY_MS } from './growth.js';
 import { frontPage, topScores, fame, sealIfDue } from './play.js';
 import { isDeveloper, myGames, listKeys, siteURL } from './dev.js';
 import { mintFor } from './api.js';
@@ -176,7 +176,7 @@ async function myGrowth(DB, env, p) {
 <div class="fame-grid"><div class="panel"><h3>Invite friends</h3><p class="muted">When a friend signs up through your link and plays for ${REFERRAL_PLAY_MS / 60000} minutes, you get ${GEMS.referrer} gems and they get ${GEMS.friend}.</p>
 <div class="copy"><input id="inviteUrl" readonly value="${esc(invite)}" aria-label="Your invite link"><button class="btn small" id="inviteCopy" type="button">Copy</button><button class="btn ghost small" id="inviteShare" type="button" hidden>Share</button></div>
 <p class="muted small">${refs.joined} joined · ${refs.played} played and paid out</p></div>
-<div class="panel"><h3>Linked accounts</h3>${prov.length ? `<ul class="links">${prov.map(x => `<li><span>${esc(x.name)}</span>${have.has(x.id) ? '<span class="ok">Linked</span>' : `<a class="btn small" href="/auth/${esc(x.route)}?next=/u/${esc(p.id)}">Link, +${GEMS.link} ${GEM}</a>`}</li>`).join('')}</ul>` : '<p class="muted">Linking social accounts opens soon.</p>'}</div>
+<div class="panel"><h3>Linked accounts</h3>${prov.length ? `<ul class="links">${prov.map(x => `<li${x.id === 'scenespot' ? ' class="featured"' : ''}><span>${esc(x.name)}${x.id === 'scenespot' ? ' <span class="x2">2× gems</span>' : ''}</span>${have.has(x.id) ? '<span class="ok">Linked</span>' : `<a class="btn small${x.id === 'scenespot' ? ' gold' : ''}" href="/auth/${esc(x.route)}?next=/u/${esc(p.id)}">Link, +${linkGems(x.id)} ${GEM}</a>`}</li>`).join('')}</ul>` : '<p class="muted">Linking social accounts opens soon.</p>'}</div>
 ${history.length ? `<div class="panel"><h3>Recent gems</h3><ul class="links">${history.map(h => `<li><span>${esc((REASONS[h.reason] || (() => h.reason))(h))}<br><span class="muted small">${new Date(h.at).toISOString().slice(0, 10)}</span></span><span class="gems">+${h.amount}</span></li>`).join('')}</ul></div>` : ''}</div>`;
 }
 
@@ -221,14 +221,16 @@ function signinPage(env, me, url) {
     : url.searchParams.has('age') ? '<div class="note err">Tick "I\'m 13 or older" first, then pick how to sign in.</div>'
     : url.searchParams.has('failed') ? '<div class="note err">Sign-in didn\'t go through. Try again.</div>' : '';
   const after = popup ? '/auth/done' : next;
+  const featured = p.social.find(x => x.id === 'scenespot'), others = p.social.filter(x => x !== featured);
   const body = `<h1>Sign in</h1><p class="lede">One account for every game on RookieGamers: your level, scores, titles and gems follow you everywhere.</p>${msg}
 ${me ? `<div class="note ok">You're signed in as ${esc(me.name)}. <a href="${esc(next)}">Continue</a></div>` : ''}
 <p class="muted">By signing in you agree to the <a href="/terms">Terms of Service</a> and <a href="/privacy">Privacy Policy</a>.</p>
-<div class="form"><label class="check"><input type="checkbox" id="age"> I'm 13 or older. Under 13? You can still play every game as a guest.</label>
-${p.social.length ? `<div class="socials">${p.social.map(x => `<a class="btn ghost social" data-net="${esc(x.id)}" href="/auth/${esc(x.route)}?next=${encodeURIComponent(after)}">Continue with ${esc(x.name)}</a>`).join('')}</div>${p.email ? '<div class="muted" style="text-align:center">or</div>' : ''}` : ''}
+<div class="form"><label class="check"><input type="checkbox" id="age"> I'm 13 or older.</label>
+${featured ? `<div class="scenespot"><span class="x2">Double gems</span><a class="btn gold social" data-net="${esc(featured.id)}" href="/auth/${esc(featured.route)}?next=${encodeURIComponent(after)}">Continue with ${esc(featured.name)}</a><p class="small">Sign in with ${esc(featured.name)} and get <b>${GEMS.scenespot} gems</b>, double any other network.</p></div>${others.length || p.email ? '<div class="muted" style="text-align:center">or</div>' : ''}` : ''}
+${others.length ? `<div class="socials">${others.map(x => `<a class="btn ghost social" data-net="${esc(x.id)}" href="/auth/${esc(x.route)}?next=${encodeURIComponent(after)}">Continue with ${esc(x.name)}</a>`).join('')}</div>${p.email ? '<div class="muted" style="text-align:center">or</div>' : ''}` : ''}
 ${p.email ? `<form class="form" id="emailForm"><input type="email" name="email" required placeholder="you@example.com" autocomplete="email" aria-label="Email">
-<button class="btn" type="submit">Email me a sign-in link</button><div id="emailMsg"></div></form>` : (p.social.length ? '' : '<div class="note">Sign-in isn\'t switched on yet. You can still play every game as a guest.</div>')}
-<p class="muted small">Every social account you sign in with or link earns you ${GEMS.link} gems, once.</p></div>`;
+<button class="btn" type="submit">Email me a sign-in link</button><div id="emailMsg"></div></form>` : (p.social.length ? '' : '<div class="note">Sign-in isn\'t switched on yet.</div>')}
+<p class="muted small">Every social account you sign in with or link earns you ${GEMS.link} gems, once${featured ? ` (${GEMS.scenespot} for ${esc(featured.name)})` : ''}.</p></div>`;
   const script = `<script>
 const age=document.getElementById('age');
 document.querySelectorAll('a.social').forEach(a=>a.onclick=e=>{if(age.checked){a.href+=(a.href.includes('?')?'&':'?')+'age=1'}});
@@ -372,7 +374,7 @@ async function shopPage(DB, req, env) {
   const shop = SHOWN.filter(i => i.price), earned = SHOWN.filter(i => i.earn);
   const body = `<style>.icon-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;margin:12px 0 28px}.icon-card{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 10px;border:1px solid var(--line);border-radius:16px;background:var(--panel);text-align:center}.icon-card.owned{border-color:var(--violet)}.icon-card img{object-fit:contain;filter:drop-shadow(0 4px 10px rgba(0,0,0,.35))}.icon-card .tag{font-size:13px;font-weight:600;color:var(--violet)}.icon-card button[disabled]{opacity:.45;cursor:not-allowed}.icon-card .gem{width:14px;height:14px;vertical-align:-2px;margin-right:4px}</style>
 <h1>Diamond Shop</h1><p class="lede">Spend the gems you earn on icons that show next to your name across RookieGamers.${me ? ` You have ${gemCount(me.gems)}.` : ''}</p>
-<p class="muted">Earn gems by playing any game (${PLAY_GEMS.amount} gems for every ${PLAY_GEMS.every / 60000} minutes, up to ${PLAY_GEMS.amount * PLAY_GEMS.perDay} a day), linking a social network (${GEMS.link} each) and inviting friends (${GEMS.referrer}). Gems have no cash value.</p>
+<p class="muted">Earn gems by playing any game (${PLAY_GEMS.amount} gems for every ${PLAY_GEMS.every / 60000} minutes, up to ${PLAY_GEMS.amount * PLAY_GEMS.perDay} a day), linking a social network (${GEMS.link} each, ${GEMS.scenespot} for SceneSpot) and inviting friends (${GEMS.referrer}). Gems have no cash value.</p>
 <div id="shopMsg"></div>
 <h2>Icons for gems</h2><div class="icon-grid">${shop.map(card).join('')}</div>
 <h2>Earned icons</h2><p class="muted">Everyone starts with their letter. These can't be bought: hit the milestone and they're yours. At level 5 you pick one Rookie Gamer, and that pick is for keeps.</p><div class="icon-grid">${earned.map(card).join('')}</div>

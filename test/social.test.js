@@ -1,3 +1,4 @@
+import { register } from 'node:module';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHmac, createHash } from 'node:crypto';
@@ -49,4 +50,25 @@ test('Instagram uses Meta Unified Login: the Facebook app keys plus a login conf
   assert.equal(loc.searchParams.get('response_type'), 'code');
   assert.equal(loc.searchParams.get('redirect_uri'), 'https://rg.example/auth/instagram/callback');
   assert.equal(loc.searchParams.has('scope'), false, 'permissions come from the configuration');
+});
+
+test('SceneSpot is featured in gold on the sign-in page and pays double gems', async () => {
+  register('./md-loader.mjs', import.meta.url);
+  const { page } = await import('../src/pages.js');
+  const { fakeD1 } = await import('./d1.js');
+  const { migrate, getPlayer } = await import('../src/db.js');
+  const { attachIdentity } = await import('../src/auth.js');
+  const { GEMS } = await import('../src/growth.js');
+  const DB = fakeD1(); await migrate(DB);
+  const env = { SITE_URL: 'https://rookiegamers.com', OIDC_ISSUER: 'https://scenespot.example', OIDC_CLIENT_ID: 'c', OIDC_CLIENT_SECRET: 's', DISCORD_CLIENT_ID: 'd', DISCORD_CLIENT_SECRET: 'd' };
+  const url = new URL('https://rookiegamers.com/signin');
+  const html = await (await page('/signin', url, env, DB, new Request(url))).text();
+  assert.match(html, /class="scenespot"[\s\S]*btn gold social[^>]*>Continue with SceneSpot/);
+  assert.ok(html.indexOf('Continue with SceneSpot') < html.indexOf('Continue with Discord'));
+  assert.ok(!/guest/i.test(html), 'no guest-play copy');
+  assert.equal(GEMS.scenespot, GEMS.link * 2);
+  const a = await attachIdentity(DB, { provider: 'scenespot', subject: 's1' });
+  const b = await attachIdentity(DB, { provider: 'discord', subject: 'd1' });
+  assert.equal((await getPlayer(DB, a)).gems, GEMS.scenespot);
+  assert.equal((await getPlayer(DB, b)).gems, GEMS.link);
 });

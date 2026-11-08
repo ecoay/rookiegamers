@@ -1,5 +1,5 @@
 import { createPlayer, newId, sha256, now, safeJSON, cleanText } from './db.js';
-import { GEMS, grantGems, recordReferral, VIA_COOKIE, SHARE_COOKIE } from './growth.js';
+import { GEMS, linkGems, grantGems, recordReferral, VIA_COOKIE, SHARE_COOKIE } from './growth.js';
 
 // Portal sign-in. Players sign in with an email link, SceneSpot (any OpenID Connect provider set
 // through OIDC_* secrets), or a social network (NETWORKS below). The OAuth networks are each switched
@@ -169,7 +169,7 @@ export async function attachIdentity(DB, { provider, subject, profile = {}, curr
   }
   await DB.prepare('INSERT INTO identities (provider, subject, player_id, profile, created_at) VALUES (?, ?, ?, ?, ?)').bind(provider, subject, pid, JSON.stringify(profile), now()).run();
   if (email) await DB.prepare('UPDATE players SET email = ? WHERE id = ? AND email IS NULL AND NOT EXISTS (SELECT 1 FROM players WHERE email = ?)').bind(email, pid, email).run();
-  if (provider !== 'email') await grantGems(DB, pid, GEMS.link, 'link', provider);
+  if (provider !== 'email') await grantGems(DB, pid, linkGems(provider), 'link', provider);
   if (created && via) await recordReferral(DB, pid, via, share);
   return pid;
 }

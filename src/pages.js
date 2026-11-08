@@ -8,7 +8,7 @@ import { devMoneySection } from './money-api.js';
 import SDK_DOCS from '../docs/SDK.md';
 import { homePage } from './home.js';
 import { canonical, ldJSON } from './seo/site.js';
-import { ICONS, EARN, iconURI, ownedIcons, claimEarned, PLAY_GEMS } from './icons.js';
+import { SHOWN, EARN, iconURI, ownedIcons, claimEarned, canPick, PLAY_GEMS } from './icons.js';
 import { FOOTER_LINKS, NEW_PAGES, DEV_JSONLD, DOCS_JSONLD, HALL_OF_FAME_JSONLD, PLAY_PAGES } from './seo/copy.js';
 
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -352,35 +352,38 @@ async function docs(DB, req, env) {
 // pictures are never used as platform icons.
 async function shopPage(DB, req, env) {
   const me = await viewer(DB, req);
-  let owned = {}, equipped = null;
+  let owned = {}, equipped = null, pickable = {};
   if (me) {
     const p = await getPlayer(DB, me.id);
     await claimEarned(DB, p);
     owned = await ownedIcons(DB, me.id);
     equipped = p.icon || null;
+    pickable = canPick(p, owned);
   }
   const card = i => {
     const has = !!owned[i.id], on = equipped === i.id;
     const action = !me ? (i.earn ? `<span class="muted small">${esc(EARN[i.earn])}</span>` : `<a class="btn small" href="/signin?next=%2Fshop">${GEM}${i.price.toLocaleString('en-US')}</a>`)
       : has ? (on ? '<span class="tag">Wearing</span>' : `<button class="btn small" data-equip="${esc(i.id)}">Wear</button>`)
+      : i.pick && pickable[i.pick] ? `<button class="btn small" data-pick="${esc(i.id)}">Pick this one</button>`
       : i.price ? `<button class="btn small" data-buy="${esc(i.id)}"${me.gems < i.price ? ' disabled' : ''}>${GEM}${i.price.toLocaleString('en-US')}</button>`
       : `<span class="muted small">${esc(EARN[i.earn])}</span>`;
     return `<div class="icon-card${has ? ' owned' : ''}"><img src="${esc(iconURI(i))}" alt="" width="112" height="112" loading="lazy"><b>${esc(i.name)}</b>${i.earn ? '<span class="muted small">Earned</span>' : ''}${action}</div>`;
   };
-  const shop = ICONS.filter(i => i.price), earned = ICONS.filter(i => i.earn);
+  const shop = SHOWN.filter(i => i.price), earned = SHOWN.filter(i => i.earn);
   const body = `<style>.icon-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;margin:12px 0 28px}.icon-card{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 10px;border:1px solid var(--line);border-radius:16px;background:var(--panel);text-align:center}.icon-card.owned{border-color:var(--violet)}.icon-card img{object-fit:contain;filter:drop-shadow(0 4px 10px rgba(0,0,0,.35))}.icon-card .tag{font-size:13px;font-weight:600;color:var(--violet)}.icon-card button[disabled]{opacity:.45;cursor:not-allowed}.icon-card .gem{width:14px;height:14px;vertical-align:-2px;margin-right:4px}</style>
 <h1>Diamond Shop</h1><p class="lede">Spend the gems you earn on icons that show next to your name across RookieGamers.${me ? ` You have ${gemCount(me.gems)}.` : ''}</p>
 <p class="muted">Earn gems by playing any game (${PLAY_GEMS.amount} gems for every ${PLAY_GEMS.every / 60000} minutes, up to ${PLAY_GEMS.amount * PLAY_GEMS.perDay} a day), linking a social network (${GEMS.link} each) and inviting friends (${GEMS.referrer}). Gems have no cash value.</p>
 <div id="shopMsg"></div>
 <h2>Icons for gems</h2><div class="icon-grid">${shop.map(card).join('')}</div>
-<h2>Earned icons</h2><p class="muted">These can't be bought. Hit the milestone and they're yours.</p><div class="icon-grid">${earned.map(card).join('')}</div>
+<h2>Earned icons</h2><p class="muted">Everyone starts with their letter. These can't be bought: hit the milestone and they're yours. At level 5 you pick one Rookie Gamer, and that pick is for keeps.</p><div class="icon-grid">${earned.map(card).join('')}</div>
 <h2>Minted icons</h2><p class="muted">Minted icons arrive with wallets, for players 18 and up. They're not live yet.</p>
 ${me && equipped ? '<p><button class="btn ghost small" data-equip="">Go back to my letter icon</button></p>' : ''}`;
   const script = me ? `<script>
 const msg=t=>{const m=document.getElementById('shopMsg');m.innerHTML='<div class="note err"></div>';m.firstChild.textContent=t};
 const post=(u,b)=>fetch(u,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(b)}).then(async r=>({ok:r.ok,j:await r.json().catch(()=>({}))}));
-document.addEventListener('click',async e=>{const b=e.target.closest('[data-buy],[data-equip]');if(!b)return;b.disabled=true;
-const r=b.dataset.buy!==undefined?await post('/api/shop/buy',{icon:b.dataset.buy}):await post('/api/shop/equip',{icon:b.dataset.equip});
+document.addEventListener('click',async e=>{const b=e.target.closest('[data-buy],[data-equip],[data-pick]');if(!b)return;
+if(b.dataset.pick!==undefined&&!confirm('Pick this Rookie Gamer? You only get to pick one.'))return;b.disabled=true;
+const r=b.dataset.buy!==undefined?await post('/api/shop/buy',{icon:b.dataset.buy}):b.dataset.pick!==undefined?await post('/api/shop/pick',{icon:b.dataset.pick}):await post('/api/shop/equip',{icon:b.dataset.equip});
 if(!r.ok){b.disabled=false;return msg(r.j.error||'That didn\'t work.')}
 if(b.dataset.buy!==undefined)await post('/api/shop/equip',{icon:b.dataset.buy});location.reload()});
 </script>` : '';

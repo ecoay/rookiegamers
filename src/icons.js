@@ -5,10 +5,13 @@
 import { now, DAY, levelFor } from './db.js';
 import { APEX } from './seo/site.js';
 
-// price: gems in the Diamond Shop. earn: a milestone instead of a price. Starters are always owned.
+// Every player starts with their letter icon and owns nothing. price: gems in the Diamond Shop.
+// earn: a milestone instead of a price. pick: one icon of the group is chosen at the milestone.
+// soon: listed in code but hidden until its art is in public/icons/.
 export const ICONS = [
-  { id: 'rookie', name: 'Rookie Gamer', earn: 'starter', file: 'rookie-gamer-portrait' },
-  { id: 'rookie-2', name: 'Rookie Gamer', earn: 'starter', file: 'rookie-gamer-female-portrait' },
+  { id: 'logo', name: 'RookieGamers', earn: 'level2', file: 'rookie-gamers-logo', soon: true },
+  { id: 'rookie', name: 'Rookie Gamer', earn: 'level5', pick: 'rookie', file: 'rookie-gamer-portrait' },
+  { id: 'rookie-2', name: 'Rookie Gamer', earn: 'level5', pick: 'rookie', file: 'rookie-gamer-female-portrait' },
   { id: 'fishtart-handler-pink', name: 'FishTart Handler', price: 150 },
   { id: 'fishtart-handler-bearded', name: 'Bearded Handler', price: 150 },
   { id: 'fishtart-handler-veteran', name: 'Old Salt', price: 150 },
@@ -30,11 +33,12 @@ export const ICONS = [
   { id: 'veteran', name: 'Veteran', earn: 'level10' },
   { id: 'champion', name: 'Champion', earn: 'hall' },
 ];
-export const ICON = Object.fromEntries(ICONS.map(i => [i.id, i]));
-export const STARTERS = ICONS.filter(i => i.earn === 'starter').map(i => i.id);
+export const ICON = Object.fromEntries(ICONS.filter(i => !i.soon).map(i => [i.id, i]));
+export const SHOWN = ICONS.filter(i => !i.soon);
 
 export const EARN = {
-  starter: 'Free for every player.',
+  level2: 'Reach level 2.',
+  level5: 'Reach level 5, then pick one Rookie Gamer.',
   link3: 'Link 3 social networks.',
   referral: 'Bring a friend who plays for 10 minutes.',
   level10: 'Reach level 10.',
@@ -65,7 +69,12 @@ export async function refundRetired(DB) {
 
 export async function ownedIcons(DB, pid) {
   const rows = (await DB.prepare('SELECT icon, source FROM icons_owned WHERE player_id = ?').bind(pid).all()).results;
-  return Object.fromEntries([...STARTERS.map(id => [id, 'earned']), ...rows.filter(r => ICON[r.icon]).map(r => [r.icon, r.source])]);
+  return Object.fromEntries(rows.filter(r => ICON[r.icon]).map(r => [r.icon, r.source]));
+}
+
+// Players who wore a Rookie Gamer back when both were free keep the one they wore.
+export async function keepWornRookie(DB) {
+  await DB.prepare("INSERT OR IGNORE INTO icons_owned (player_id, icon, source, at) SELECT id, icon, 'earned', ? FROM players WHERE icon IN ('rookie', 'rookie-2')").bind(now()).run();
 }
 
 // Grants any milestone icons the player now qualifies for. Cheap enough to run on each shop visit.
@@ -75,8 +84,8 @@ export async function claimEarned(DB, p) {
     DB.prepare("SELECT COUNT(*) AS n FROM gems WHERE player_id = ? AND reason = 'referral'").bind(p.id).first(),
     DB.prepare('SELECT COUNT(*) AS n FROM hall WHERE player_id = ?').bind(p.id).first(),
   ]);
-  const got = { link3: links.n >= 3, referral: refs.n >= 1, level10: levelFor(p.xp) >= 10, hall: hall.n >= 1 };
-  for (const i of ICONS) if (i.earn && got[i.earn]) {
+  const got = { level2: levelFor(p.xp) >= 2, link3: links.n >= 3, referral: refs.n >= 1, level10: levelFor(p.xp) >= 10, hall: hall.n >= 1 };
+  for (const i of SHOWN) if (i.earn && !i.pick && got[i.earn]) {
     await DB.prepare("INSERT OR IGNORE INTO icons_owned (player_id, icon, source, at) VALUES (?, ?, 'earned', ?)").bind(p.id, i.id, now()).run();
   }
 }
@@ -97,6 +106,27 @@ export async function buyIcon(DB, pid, id) {
   await DB.prepare('INSERT OR IGNORE INTO gems (player_id, reason, ref, amount, at) VALUES (?, ?, ?, ?, ?)').bind(pid, 'shop', id, -i.price, now()).run();
   const p = await DB.prepare('SELECT gems FROM players WHERE id = ?').bind(pid).first();
   return { status: 200, ok: true, icon: id, gems: p.gems };
+}
+
+// At level 5 a player picks one Rookie Gamer, once. The pick is theirs to wear from then on.
+export async function pickIcon(DB, p, id) {
+  const i = ICON[id];
+  if (!i || !i.pick) return { status: 404, error: 'That icon isn\'t a pick.' };
+  if (levelFor(p.xp) < 5) return { status: 403, error: 'Reach level 5 to pick your Rookie Gamer.' };
+  const group = SHOWN.filter(x => x.pick === i.pick).map(x => x.id);
+  const owned = await ownedIcons(DB, p.id);
+  if (group.some(g => owned[g])) return { status: 409, error: 'You already picked your Rookie Gamer.' };
+  await DB.prepare("INSERT OR IGNORE INTO icons_owned (player_id, icon, source, at) VALUES (?, ?, 'earned', ?)").bind(p.id, id, now()).run();
+  await DB.prepare('UPDATE players SET icon = ? WHERE id = ?').bind(id, p.id).run();
+  return { status: 200, ok: true, icon: id };
+}
+
+// Which pick groups a player can choose from now: level reached and nothing in the group owned yet.
+export function canPick(p, owned) {
+  if (!p || levelFor(p.xp) < 5) return {};
+  const groups = {};
+  for (const i of SHOWN) if (i.pick) groups[i.pick] = groups[i.pick] || !!owned[i.id];
+  return Object.fromEntries(Object.entries(groups).filter(([, has]) => !has).map(([g]) => [g, true]));
 }
 
 export async function equipIcon(DB, pid, id) {

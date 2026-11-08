@@ -5,7 +5,7 @@ import { gameEvent, submitScore, topScores, rankOf, fame, playNext, frontPage, s
 import * as dev from './dev.js';
 import { createShare } from './growth.js';
 import { deleteAccount } from './account.js';
-import { ICONS, EARN, iconURI, ownedIcons, claimEarned, buyIcon, equipIcon } from './icons.js';
+import { SHOWN, EARN, iconURI, ownedIcons, claimEarned, buyIcon, equipIcon, pickIcon, canPick } from './icons.js';
 import { moneyV1, moneyDev } from './money-api.js';
 
 export const json = (data, status = 200, extra = {}) => {
@@ -167,7 +167,12 @@ export async function apiPortal(req, env, DB, url) {
     const p = await getPlayer(DB, pid);
     await claimEarned(DB, p);
     const owned = await ownedIcons(DB, pid);
-    return json({ gems: p.gems, equipped: p.icon || null, icons: ICONS.map(i => ({ id: i.id, name: i.name, price: i.price || null, earn: i.earn ? EARN[i.earn] : null, owned: !!owned[i.id], image: iconURI(i) })) });
+    const pickable = canPick(p, owned);
+    return json({ gems: p.gems, equipped: p.icon || null, icons: SHOWN.map(i => ({ id: i.id, name: i.name, price: i.price || null, earn: i.earn ? EARN[i.earn] : null, owned: !!owned[i.id], pickable: !!(i.pick && pickable[i.pick]), image: iconURI(i) })) });
+  }
+  if (path === '/api/shop/pick' && method === 'POST') {
+    const r = await pickIcon(DB, await getPlayer(DB, pid), String((await readJSON(req)).icon || ''));
+    return json(r, r.status);
   }
   if (path === '/api/shop/buy' && method === 'POST') {
     const r = await buyIcon(DB, pid, String((await readJSON(req)).icon || ''));

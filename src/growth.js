@@ -11,7 +11,9 @@ import { now, newId, DAY, getPlayer, cleanText } from './db.js';
 // Gems are a reward currency inside RookieGamers. They are not money and never turn into coin or
 // cash.
 
-export const GEMS = { link: 50, referrer: 100, friend: 25 };
+// SceneSpot is the featured sign-in and pays double the usual link reward.
+export const GEMS = { link: 50, scenespot: 100, referrer: 100, friend: 25 };
+export const linkGems = provider => provider === 'scenespot' ? GEMS.scenespot : GEMS.link;
 export const REFERRAL_PLAY_MS = 10 * 60 * 1000;
 const REFERRALS_PER_DAY = 20;        // gems for at most 20 friends a day, so farming accounts doesn't pay
 const SHARES_PER_HOUR = 60;

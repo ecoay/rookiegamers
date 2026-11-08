@@ -97,6 +97,8 @@ export async function migrate(DB) {
   await migrateMoney(DB);
   await refundRetired(DB);
   await keepWornRookie(DB);
+  // Hand of Nine moved from an uploaded build to a standalone site the portal links and frames.
+  await DB.prepare("UPDATE games SET kind = 'linked', url = 'https://handofnine.com/', origins = '[\"https://handofnine.com\"]' WHERE slug = 'handofnine' AND kind = 'hosted'").run();
   const t = now();
   await DB.batch(SEED_GAMES.map(g => DB.prepare(
     `INSERT OR IGNORE INTO games (slug, title, kind, url, origins, developer, blurb, tags, color, devices, multiplayer, score_label, score_mode, score_order, max_score, live, released_at, created_at)

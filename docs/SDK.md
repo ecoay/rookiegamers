@@ -266,6 +266,8 @@ There are two kinds of game:
 
 Publishing runs quick checks first: an `index.html` exists, it loads the SDK, it has a viewport tag, it carries no outside ad code, and it has no sign-in of its own. Problems block publishing; warnings don't.
 
+**Your first game is reviewed.** RookieGamers plays every developer's first game before it goes live. Publishing it answers `{ "live": false, "pending": true }` (HTTP 202) and the game waits in the review queue, usually a day or two. If it's approved, it goes live and so does everything after: your later games and updates go live as soon as they pass the checks. If it isn't, `GET /api/dev/games` shows `status: "rejected"` and the reason in `review.note`; fix it and publish again. Each game's `status` is `live`, `pending`, `rejected` or `draft`. While a build waits for review it can't be changed, so upload a new version if you need to fix something.
+
 Ways to publish, all with the same powers:
 
 - **AI agents:** connect Claude Code, Codex, Grok or any MCP client to `https://rookiegamers.com/mcp` with your API key. See `/dev` on the portal for one-line setup.
@@ -283,7 +285,7 @@ All calls take `Authorization: Bearer rgk_...` (make a key at `rookiegamers.com/
 | `PATCH /api/dev/games/<slug>` | Change any of those fields |
 | `PUT /api/dev/games/<slug>/builds/<version>/files/<path>` | Upload one file of a build (raw body) |
 | `GET /api/dev/games/<slug>/builds` | Uploaded builds |
-| `POST /api/dev/games/<slug>/publish` | Make a build live: `{ version }` (latest build if left out) |
+| `POST /api/dev/games/<slug>/publish` | Make a build live: `{ version }` (latest build if left out). A first game goes to review instead (202, `pending: true`) |
 | `POST /api/dev/games/<slug>/unpublish` | Take the game down |
 | `POST /api/dev/games/<slug>/server-key` | Make a new server key (shown once) |
 | `GET /api/dev/games/<slug>/stats` | Plays, playtime, returning players, which games sent players, top scores |

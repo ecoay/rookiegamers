@@ -1,4 +1,4 @@
-import { now, newId, sha256, cleanText, getGame, gameView } from './db.js';
+import { now, newId, sha256, cleanText, safeJSON, getGame, gameView } from './db.js';
 import { SLUG_RE, RESERVED } from './catalog.js';
 import { gameStats, topScores } from './play.js';
 
@@ -140,8 +140,12 @@ export async function myGames(DB, pid) {
 }
 
 export function devGameView(g) {
-  return { ...gameView(g), payoutWallet: g.payout_wallet, live: !!g.live, version: g.version, maxScore: g.max_score, hasServerKey: !!g.key_hash };
+  return { ...gameView(g), payoutWallet: g.payout_wallet, live: !!g.live, status: gameStatus(g), version: g.version, maxScore: g.max_score, hasServerKey: !!g.key_hash,
+    review: g.review ? { status: g.review, note: g.review_note || null, version: g.review_version || null, at: g.review_at || null } : null };
 }
+
+// 'live', 'pending' (in the review queue), 'rejected' (turned down, see review.note) or 'draft'.
+export const gameStatus = g => g.live ? 'live' : g.review === 'pending' ? 'pending' : g.review === 'rejected' ? 'rejected' : 'draft';
 
 // A secret for the game's own server, used to report trusted scores. Shown once.
 export async function rotateServerKey(DB, pid, slug, admin = false) {
@@ -159,6 +163,8 @@ export async function putFile(DB, env, pid, slug, version, path, body, size, adm
   if (!VERSION_RE.test(version)) fail(400, 'Versions are up to 40 letters, numbers, dots and dashes, like "1.0.3".');
   if (!PATH_RE.test(path)) fail(400, `"${path}" isn't an allowed file path.`);
   if (g.version === version && g.live) fail(409, `Version ${version} is live. Upload a new version, then publish it.`);
+  // The build in the review queue is frozen, so what goes live is what was reviewed.
+  if (g.review === 'pending' && g.review_version === version) fail(409, `Version ${version} is waiting for review. Upload a new version, then publish it.`);
   if (size > MAX_FILE_BYTES) fail(413, 'Files can be up to 25 MB each.');
   const key = `${g.slug}/${version}/${path}`;
   const [b, old] = await Promise.all([DB.prepare('SELECT bytes FROM builds WHERE game = ? AND version = ?').bind(g.slug, version).first(), env.GAMES.head(key)]);
@@ -213,24 +219,108 @@ export async function checkBuild(env, slug, version) {
   return { ok: !problems.length, problems, warnings };
 }
 
+// A developer's first game waits in the portal's review queue. Once the portal approves one of
+// their games, later games and updates go live as soon as they pass the checks. The REST API, the
+// CLI and the MCP server all publish through here, so the queue covers every way in.
+export async function isTrusted(DB, pid) {
+  if (!pid) return false;
+  const d = await DB.prepare(`SELECT approved_at, EXISTS (SELECT 1 FROM games WHERE owner_id = d.player_id AND live = 1) AS has_live
+    FROM developers d WHERE player_id = ?`).bind(pid).first();
+  return !!(d && (d.approved_at || d.has_live));
+}
+
+const REVIEW_MESSAGE = 'Your first game is in the review queue. We play every developer\'s first game before it goes live, usually within a day or two. Once it\'s approved, your later games and updates go live right after the checks.';
+
 export async function publish(DB, env, pid, slug, version, admin = false) {
   const g = await ownGame(DB, pid, slug, admin);
+  let check = { problems: [], warnings: [] };
   if (g.kind === 'hosted') {
     if (!version) version = (await DB.prepare('SELECT version FROM builds WHERE game = ? ORDER BY created_at DESC LIMIT 1').bind(g.slug).first())?.version;
     if (!version) fail(400, 'Upload a build before publishing.');
     if (!await DB.prepare('SELECT 1 FROM builds WHERE game = ? AND version = ?').bind(g.slug, version).first()) fail(404, `There's no build ${version}.`);
-    const check = await checkBuild(env, g.slug, version);
+    check = await checkBuild(env, g.slug, version);
     if (!check.ok) return { live: false, ...check };
-    await DB.prepare('UPDATE games SET version = ?, live = 1, released_at = CASE WHEN live = 0 AND version IS NULL THEN ? ELSE released_at END WHERE slug = ?').bind(version, now(), g.slug).run();
-    return { live: true, version, ...check, url: `${siteURL(env)}/play/${g.slug}` };
+  } else version = undefined;
+  if (!admin && !g.live && !await isTrusted(DB, g.owner_id)) {
+    await DB.prepare("UPDATE games SET review = 'pending', review_version = ?, review_note = NULL, review_at = ? WHERE slug = ?").bind(version || null, now(), g.slug).run();
+    return { live: false, pending: true, ...(version ? { version } : {}), ...check, message: REVIEW_MESSAGE };
   }
-  await DB.prepare('UPDATE games SET live = 1, released_at = CASE WHEN live = 0 THEN ? ELSE released_at END WHERE slug = ?').bind(now(), g.slug).run();
-  return { live: true, problems: [], warnings: [], url: `${siteURL(env)}/play/${g.slug}` };
+  await goLive(DB, g, version);
+  // The portal publishing a game for its developer counts as approving them.
+  if (admin && g.owner_id) await trust(DB, g.owner_id);
+  return { live: true, ...(version ? { version } : {}), ...check, url: `${siteURL(env)}/play/${g.slug}` };
+}
+
+async function goLive(DB, g, version) {
+  const review = "review = CASE WHEN review IS NULL THEN NULL ELSE 'approved' END, review_version = NULL";
+  if (g.kind === 'hosted') await DB.prepare(`UPDATE games SET version = ?, live = 1, ${review}, released_at = CASE WHEN live = 0 AND version IS NULL THEN ? ELSE released_at END WHERE slug = ?`).bind(version, now(), g.slug).run();
+  else await DB.prepare(`UPDATE games SET live = 1, ${review}, released_at = CASE WHEN live = 0 THEN ? ELSE released_at END WHERE slug = ?`).bind(now(), g.slug).run();
+}
+
+const trust = (DB, pid) => DB.prepare('UPDATE developers SET approved_at = COALESCE(approved_at, ?) WHERE player_id = ?').bind(now(), pid).run();
+
+/* ---------- the review queue (admin) ---------- */
+
+// A signed link that plays a hosted build that isn't live yet, so the portal can try it before
+// approving. Only someone holding ADMIN_TOKEN can make one.
+export async function previewSig(env, slug, version) {
+  if (!env.ADMIN_TOKEN) return null;
+  const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(env.ADMIN_TOKEN), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', k, new TextEncoder().encode(`preview:${slug}:${version}`));
+  return [...new Uint8Array(sig)].slice(0, 16).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+export async function previewURL(env, slug, version) {
+  const sig = await previewSig(env, slug, version);
+  if (!sig) return null;
+  const base = env.GAMES_HOST ? `https://${env.GAMES_HOST}` : `${siteURL(env)}/hosted`;
+  return `${base}/${slug}/~${sig}/${encodeURIComponent(version)}/?rg_test=1`;
+}
+
+export async function reviewQueue(DB, env) {
+  const rows = (await DB.prepare(`SELECT g.*, p.email AS owner_email, d.name AS dev_name FROM games g
+    LEFT JOIN players p ON p.id = g.owner_id LEFT JOIN developers d ON d.player_id = g.owner_id
+    WHERE g.review = 'pending' ORDER BY g.review_at`).all()).results;
+  const out = [];
+  for (const g of rows) {
+    const item = { slug: g.slug, title: g.title, kind: g.kind, blurb: g.blurb, tags: safeJSON(g.tags, []), developer: g.dev_name || g.developer,
+      ownerEmail: g.owner_email || null, submittedAt: g.review_at, wallet: g.wallet || null, coin: !!g.coin };
+    if (g.kind === 'hosted') {
+      item.version = g.review_version;
+      item.previewUrl = await previewURL(env, g.slug, g.review_version);
+      if (env.GAMES) item.warnings = (await checkBuild(env, g.slug, g.review_version)).warnings;
+    } else item.url = g.url;
+    out.push(item);
+  }
+  return out;
+}
+
+// The portal's call on a game in the queue: approve puts it live and trusts its developer from then
+// on; reject keeps it off the portal and tells the developer why.
+export async function reviewGame(DB, env, slug, { status, note } = {}) {
+  const g = await getGame(DB, String(slug || ''));
+  if (!g) fail(404, `There's no game called "${slug}".`);
+  if (g.review !== 'pending') fail(400, `${g.title} isn't waiting for review.`);
+  if (status === 'approved') {
+    if (g.kind === 'hosted' && !await DB.prepare('SELECT 1 FROM builds WHERE game = ? AND version = ?').bind(g.slug, g.review_version || '').first()) fail(404, `The build ${g.review_version} is gone. Ask the developer to publish again.`);
+    await goLive(DB, g, g.review_version);
+    await DB.prepare('UPDATE games SET review_note = ?, review_at = ? WHERE slug = ?').bind(cleanText(note, 300) || null, now(), g.slug).run();
+    if (g.owner_id) await trust(DB, g.owner_id);
+    return { live: true, review: 'approved', url: `${siteURL(env)}/play/${g.slug}` };
+  }
+  if (status === 'rejected') {
+    const why = cleanText(note, 300);
+    if (!why) fail(400, 'Say why, so the developer can fix it: { "status": "rejected", "note": "..." }.');
+    await DB.prepare("UPDATE games SET review = 'rejected', review_note = ?, review_at = ? WHERE slug = ?").bind(why, now(), g.slug).run();
+    return { live: false, review: 'rejected', note: why };
+  }
+  fail(400, 'Send { "status": "approved" } or { "status": "rejected", "note": "why" }.');
 }
 
 export async function unpublish(DB, pid, slug, admin = false) {
   const g = await ownGame(DB, pid, slug, admin);
-  await DB.prepare('UPDATE games SET live = 0 WHERE slug = ?').bind(g.slug).run();
+  // Taking down a game that's waiting for review withdraws it from the queue.
+  await DB.prepare("UPDATE games SET live = 0, review = CASE WHEN review = 'pending' THEN NULL ELSE review END WHERE slug = ?").bind(g.slug).run();
   return { live: false };
 }
 

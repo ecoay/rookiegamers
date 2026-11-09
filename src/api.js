@@ -305,13 +305,16 @@ export async function apiDev(req, env, DB, url, { admin = false } = {}) {
     }
     if ((m = path.match(/^\/games\/([a-z0-9-]{1,32})\/publish$/)) && method === 'POST') {
       const r = await dev.publish(DB, env, pid, m[1], (await readJSON(req)).version, admin);
-      return json(r, r.live ? 200 : 422);
+      return json(r, r.live ? 200 : r.pending ? 202 : 422);
     }
     if ((m = path.match(/^\/games\/([a-z0-9-]{1,32})\/unpublish$/)) && method === 'POST') return json(await dev.unpublish(DB, pid, m[1], admin));
     if ((m = path.match(/^\/games\/([a-z0-9-]{1,32})\/server-key$/)) && method === 'POST') return json({ key: await dev.rotateServerKey(DB, pid, m[1], admin) });
     if ((m = path.match(/^\/games\/([a-z0-9-]{1,32})\/stats$/)) && method === 'GET') return json(await dev.stats(DB, pid, m[1], admin));
 
     if (admin) {
+      // The first-game review queue: GET lists what's waiting, POST approves or rejects one.
+      if (path === '/review' && method === 'GET') return json({ queue: await dev.reviewQueue(DB, env) });
+      if ((m = path.match(/^\/games\/([a-z0-9-]{1,32})\/review$/)) && method === 'POST') return json(await dev.reviewGame(DB, env, m[1], await readJSON(req)));
       if (path === '/invites' && method === 'POST') return json({ invite: await dev.createInvite(DB, (await readJSON(req)).note), url: `${dev.siteURL(env)}/dev?invite=` });
       if ((m = path.match(/^\/games\/([a-z0-9-]{1,32})\/owner$/)) && method === 'POST') {
         const b = await readJSON(req);

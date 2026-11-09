@@ -68,6 +68,20 @@ curl -X POST https://rookiegamers.com/api/admin/games/handofnine/publish -H "aut
 curl -X POST https://rookiegamers.com/api/admin/games/unsays/server-key -H "authorization: Bearer $ADMIN_TOKEN" -H 'content-type: application/json' -d '{}'
 ```
 
+### Game review
+
+A developer's first game waits for review. Once one of their games is approved, their later games and updates go live as soon as they pass the automatic checks. Games that were live before the queue existed, and their developers, are already approved. Publishing a game through the admin API puts it live and approves its developer.
+
+```sh
+# first games waiting for review: hosted ones come with a previewUrl that plays the waiting build,
+# linked ones with their url
+curl https://rookiegamers.com/api/admin/review -H "authorization: Bearer $ADMIN_TOKEN"
+# approve: the game goes live and its developer is trusted from then on
+curl -X POST https://rookiegamers.com/api/admin/games/sky-harvest/review -H "authorization: Bearer $ADMIN_TOKEN" -H 'content-type: application/json' -d '{"status":"approved"}'
+# reject, with the reason the developer sees on /dev, in the CLI and through MCP
+curl -X POST https://rookiegamers.com/api/admin/games/sky-harvest/review -H "authorization: Bearer $ADMIN_TOKEN" -H 'content-type: application/json' -d '{"status":"rejected","note":"The game never loads past the title screen."}'
+```
+
 ### Ads, stores and payouts
 
 ```sh

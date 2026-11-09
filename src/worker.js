@@ -7,7 +7,7 @@ import { apiV1, apiPortal, apiDev, json, CORS } from './api.js';
 import { mcp } from './mcp.js';
 import { page, notFoundPage } from './pages.js';
 import { archiveMonth } from './play.js';
-import { siteURL, contentType } from './dev.js';
+import { siteURL, contentType, previewSig } from './dev.js';
 import { stripeWebhook, moneyPage } from './money-api.js';
 import { monthlyMoney } from './money.js';
 import { ROBOTS_TXT, SITEMAP_XML, LLMS_TXT, LLMS_FULL_TXT } from './seo/files.js';
@@ -21,14 +21,23 @@ const timingSafeEqual = (a, b) => {
   return x === 0;
 };
 
-// Hosted builds live in R2 at <slug>/<version>/<path>. Only the live version is served.
+// Hosted builds live in R2 at <slug>/<version>/<path>. Only the live version is served, plus
+// builds opened with a signed review link (~<sig>/<version>/...) from the admin review queue.
 async function hosted(env, DB, slug, rest) {
   if (!env.GAMES) return new Response('Game hosting is not set up.', { status: 503 });
-  const g = await DB.prepare('SELECT version, live FROM games WHERE slug = ? AND kind = ?').bind(slug, 'hosted').first();
-  if (!g || !g.live || !g.version) return new Response('Not found', { status: 404 });
+  let version, pm;
+  if ((pm = /^~([a-f0-9]{32})\/([^/]{1,40})\/(.*)$/.exec(rest || ''))) {
+    const exists = await DB.prepare('SELECT 1 FROM builds WHERE game = ? AND version = ?').bind(slug, pm[2]).first();
+    if (!exists || pm[1] !== await previewSig(env, slug, pm[2])) return new Response('Not found', { status: 404 });
+    version = pm[2]; rest = pm[3];
+  } else {
+    const g = await DB.prepare('SELECT version, live FROM games WHERE slug = ? AND kind = ?').bind(slug, 'hosted').first();
+    if (!g || !g.live || !g.version) return new Response('Not found', { status: 404 });
+    version = g.version;
+  }
   const path = !rest || rest.endsWith('/') ? (rest || '') + 'index.html' : rest;
   if (path.includes('..')) return new Response('Not found', { status: 404 });
-  const obj = await env.GAMES.get(`${slug}/${g.version}/${path}`);
+  const obj = await env.GAMES.get(`${slug}/${version}/${path}`);
   if (!obj) return new Response('Not found', { status: 404 });
   const h = new Headers({ 'content-type': obj.httpMetadata?.contentType || contentType(path), etag: obj.httpEtag,
     'cache-control': path.endsWith('.html') ? 'no-cache' : 'public, max-age=300', 'x-content-type-options': 'nosniff',

@@ -95,6 +95,15 @@ const COLUMNS = [
   'ALTER TABLE players ADD COLUMN icon TEXT',
   // frame: the icon frame the player wears (src/frames.js). Null is no frame.
   'ALTER TABLE players ADD COLUMN frame TEXT',
+  // The first-game review (src/dev.js). approved_at: when the portal approved a developer's first
+  // game; from then on their games and updates go live after the automatic checks.
+  'ALTER TABLE developers ADD COLUMN approved_at INTEGER',
+  // review: null, 'pending', 'approved' or 'rejected'. review_version is the build waiting (hosted),
+  // review_note the reason a game was turned down, review_at when it was sent in or decided.
+  'ALTER TABLE games ADD COLUMN review TEXT',
+  'ALTER TABLE games ADD COLUMN review_version TEXT',
+  'ALTER TABLE games ADD COLUMN review_note TEXT',
+  'ALTER TABLE games ADD COLUMN review_at INTEGER',
 ];
 
 export async function migrate(DB) {
@@ -102,6 +111,8 @@ export async function migrate(DB) {
   for (const c of COLUMNS) { try { await DB.prepare(c).run(); } catch (e) { if (!/duplicate column/i.test(String(e && e.message))) throw e; } }
   await DB.prepare('CREATE INDEX IF NOT EXISTS players_referred ON players(referred_by)').run();
   await migrateMoney(DB);
+  // Developers who already have a live game were approved before the review queue existed.
+  await DB.prepare('UPDATE developers SET approved_at = created_at WHERE approved_at IS NULL AND player_id IN (SELECT owner_id FROM games WHERE live = 1 AND owner_id IS NOT NULL)').run();
   await refundRetired(DB);
   await keepWornRookie(DB);
   // Everyone who joined through an invite is friends with the player who invited them.

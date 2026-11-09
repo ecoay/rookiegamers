@@ -7,6 +7,7 @@ import { createShare } from './growth.js';
 import { deleteAccount } from './account.js';
 import { SHOWN, EARN, iconURI, ownedIcons, claimEarned, buyIcon, equipIcon, pickIcon, canPick } from './icons.js';
 import { listSaves, writeSave } from './saves.js';
+import { listFriends, friendAction, incomingRequests, getGameXp, addGameXp } from './friends.js';
 import { FRAMES, FRAME_EARN, ownedFrames, claimFrames, buyFrame, equipFrame } from './frames.js';
 import { moneyV1, moneyDev } from './money-api.js';
 
@@ -99,7 +100,13 @@ export async function apiV1(req, env, DB, url) {
       const row = await DB.prepare('SELECT score FROM scores WHERE game = ? AND month = ? AND player_id = ?').bind(g.slug, board, pid).first();
       return cjson({ rank: row ? await rankOf(DB, g, board, pid) : null, score: row ? row.score : null });
     }
-    return cjson({ board: board === 'all' ? 'alltime' : 'monthly', month: board === 'all' ? null : board, label: g.score_label, rows: await topScores(DB, g, board, Number(url.searchParams.get('limit')) || 10) });
+    let only = null;
+    if (url.searchParams.get('friends') === '1') {
+      const pid = await bearerPlayer(DB, env, req, g.slug);
+      if (!pid) return cjson({ error: 'Sign in to see your friends\' scores.', signin: true }, 401);
+      only = [pid, ...(await listFriends(DB, pid)).map(f => f.id)];
+    }
+    return cjson({ board: board === 'all' ? 'alltime' : 'monthly', month: board === 'all' ? null : board, label: g.score_label, friends: !!only, rows: await topScores(DB, g, board, Number(url.searchParams.get('limit')) || 10, only) });
   }
 
   if (path === '/fame' && method === 'GET') {
@@ -122,6 +129,30 @@ export async function apiV1(req, env, DB, url) {
     const pid = await bearerPlayer(DB, env, req, g.slug);
     const r = await createShare(DB, dev.siteURL(env), g, pid, b);
     return cjson(r, r.status || 200);
+  }
+
+  // Friends, for the game the token is for: each friend's public profile and whether they play it.
+  if (path === '/friends' && (method === 'GET' || method === 'POST')) {
+    const b = method === 'POST' ? await readJSON(req) : {};
+    const g = await getGame(DB, String(method === 'GET' ? url.searchParams.get('game') || '' : b.game || ''));
+    if (!g) return cjson({ error: 'Unknown game.' }, 404);
+    const pid = await bearerPlayer(DB, env, req, g.slug);
+    if (!pid) return cjson({ error: 'Sign in to see your friends.', signin: true }, 401);
+    if (method === 'GET') return cjson({ friends: await listFriends(DB, pid, g.slug), requests: await incomingRequests(DB, pid) });
+    const r = await friendAction(DB, pid, String(b.player || ''), String(b.action || 'add'));
+    return cjson(r, r.status);
+  }
+
+  // The game's own level for this player (rg.level).
+  if (path === '/level' && (method === 'GET' || method === 'POST')) {
+    const b = method === 'POST' ? await readJSON(req) : {};
+    const g = await getGame(DB, String(method === 'GET' ? url.searchParams.get('game') || '' : b.game || ''));
+    if (!g) return cjson({ error: 'Unknown game.' }, 404);
+    const pid = await bearerPlayer(DB, env, req, g.slug);
+    if (!pid) return cjson({ error: 'Sign in to earn levels.', signin: true }, 401);
+    if (method === 'GET') return cjson(await getGameXp(DB, g.slug, pid));
+    const r = await addGameXp(DB, g.slug, pid, b.xp);
+    return cjson(r, r.status);
   }
 
   // Cloud saves. The player token is scoped to one game, so a game only ever sees its own saves.
@@ -199,6 +230,11 @@ export async function apiPortal(req, env, DB, url) {
   if (path === '/api/shop/equip' && method === 'POST') {
     const b = await readJSON(req);
     const r = b.frame !== undefined ? await equipFrame(DB, pid, String(b.frame || '')) : await equipIcon(DB, pid, String(b.icon || ''));
+    return json(r, r.status);
+  }
+  if (path === '/api/friends' && method === 'POST') {
+    const b = await readJSON(req);
+    const r = await friendAction(DB, pid, String(b.player || ''), String(b.action || 'add'));
     return json(r, r.status);
   }
   // Deleting the account is final. The body must say {"confirm":"DELETE"} so it can't happen by accident.

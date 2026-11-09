@@ -74,6 +74,11 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS frames_owned (player_id TEXT NOT NULL, frame TEXT NOT NULL, source TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (player_id, frame))`,
   // Cloud saves (src/saves.js): one JSON value per player, game and key, versioned.
   `CREATE TABLE IF NOT EXISTS saves (game TEXT NOT NULL, player_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, version INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (game, player_id, key))`,
+  // Friends (src/friends.js). One row per pair, a < b. status 'pending' (requested_by asked) or 'accepted'.
+  `CREATE TABLE IF NOT EXISTS friends (a TEXT NOT NULL, b TEXT NOT NULL, status TEXT NOT NULL, requested_by TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (a, b))`,
+  `CREATE INDEX IF NOT EXISTS friends_b ON friends(b)`,
+  // A game's own XP for a player (rg.level), with today's totals for the daily caps.
+  `CREATE TABLE IF NOT EXISTS game_xp (game TEXT NOT NULL, player_id TEXT NOT NULL, xp INTEGER NOT NULL DEFAULT 0, day TEXT, day_xp INTEGER NOT NULL DEFAULT 0, day_rg INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL, PRIMARY KEY (game, player_id))`,
   `CREATE TABLE IF NOT EXISTS submits (game TEXT NOT NULL, player_id TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (game, player_id))`,
 ];
 
@@ -99,6 +104,9 @@ export async function migrate(DB) {
   await migrateMoney(DB);
   await refundRetired(DB);
   await keepWornRookie(DB);
+  // Everyone who joined through an invite is friends with the player who invited them.
+  await DB.prepare(`INSERT OR IGNORE INTO friends (a, b, status, requested_by, at)
+    SELECT MIN(id, referred_by), MAX(id, referred_by), 'accepted', referred_by, created_at FROM players WHERE referred_by IS NOT NULL AND referred_by != id`).run();
   // Hand of Nine moved from an uploaded build to a standalone site the portal links and frames.
   await DB.prepare("UPDATE games SET kind = 'linked', url = 'https://handofnine.com/', origins = '[\"https://handofnine.com\"]' WHERE slug = 'handofnine' AND kind = 'hosted'").run();
   const t = now();

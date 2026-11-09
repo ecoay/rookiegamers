@@ -10,6 +10,7 @@ import { homePage } from './home.js';
 import { canonical, ldJSON } from './seo/site.js';
 import { SHOWN, EARN, iconURI, ownedIcons, claimEarned, canPick, PLAY_GEMS } from './icons.js';
 import { FRAMES, FRAME_EARN, ownedFrames, claimFrames, progress, MILESTONES, hallTrophies } from './frames.js';
+import { friendState, listFriends, incomingRequests, gameLevel } from './friends.js';
 import { FOOTER_LINKS, NEW_PAGES, DEV_JSONLD, DOCS_JSONLD, HALL_OF_FAME_JSONLD, PLAY_PAGES } from './seo/copy.js';
 
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -230,6 +231,27 @@ const body=b.dataset.frame!==undefined?{frame:b.dataset.frame}:{icon:b.dataset.e
 const r=await fetch(b.dataset.pick!==undefined?'/api/shop/pick':'/api/shop/equip',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
 if(r.ok){location.reload();return}b.disabled=false;const j=await r.json().catch(()=>({}));const m=document.getElementById('invMsg');m.innerHTML='<div class="note err"></div>';m.firstChild.textContent=j.error||'That didn\\'t work.'});`;
 
+// Friends on your own profile: requests waiting on you, then your friends list.
+function friendsHTML(friends, requests) {
+  const who = f => `<a class="who" href="/u/${esc(f.id)}">${avatar(f)}<span>${esc(f.name)}<small class="muted">Lv ${f.level}</small></span></a>`;
+  return `<section id="friends" class="friends"><h2>Friends <span class="muted">${friends.length}</span></h2>
+${requests.length ? `<div class="panel"><h3>Friend requests</h3><ul class="flist">${requests.map(f => `<li>${who(f)}<span><button class="btn small" data-friend="${esc(f.id)}" data-act="accept">Accept</button> <button class="btn ghost small" data-friend="${esc(f.id)}" data-act="remove">Decline</button></span></li>`).join('')}</ul></div>` : ''}
+${friends.length ? `<ul class="flist">${friends.map(f => `<li>${who(f)}<button class="btn ghost small" data-friend="${esc(f.id)}" data-act="remove" data-confirm="Remove ${esc(f.name)} from your friends?">Remove</button></li>`).join('')}</ul>` : '<p class="muted">No friends yet. Send your invite link below: anyone who joins through it becomes your friend straight away. You can also add players from their profile.</p>'}
+<div id="friendMsg"></div></section>`;
+}
+
+// The button on someone else's profile.
+function friendButton(id, state) {
+  if (state === 'friends') return `<button class="btn ghost small" data-friend="${esc(id)}" data-act="remove" data-confirm="Remove this friend?">Friends ✓</button>`;
+  if (state === 'sent') return `<button class="btn ghost small" data-friend="${esc(id)}" data-act="remove">Requested · Cancel</button>`;
+  if (state === 'received') return `<button class="btn small" data-friend="${esc(id)}" data-act="accept">Accept friend request</button>`;
+  return `<button class="btn small" data-friend="${esc(id)}" data-act="add">Add friend</button>`;
+}
+
+const FRIENDS_JS = `document.addEventListener('click',async e=>{const b=e.target.closest('[data-friend]');if(!b)return;if(b.dataset.confirm&&!confirm(b.dataset.confirm))return;b.disabled=true;
+const r=await fetch('/api/friends',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({player:b.dataset.friend,action:b.dataset.act})});
+if(r.ok){location.reload();return}b.disabled=false;const j=await r.json().catch(()=>({}));const m=document.getElementById('friendMsg');if(m){m.innerHTML='<div class="note err"></div>';m.firstChild.textContent=j.error||'That didn\\'t work.'}});`;
+
 async function profilePage(DB, req, env, id) {
   const me = await viewer(DB, req);
   const p = await getPlayer(DB, id);
@@ -238,8 +260,9 @@ async function profilePage(DB, req, env, id) {
   const lv = pub.level, floor = 50 * lv * (lv - 1), next = 50 * (lv + 1) * lv;
   const [games, titles] = await Promise.all([
     DB.prepare(`SELECT g.slug, g.title, g.score_label, g.score_order, SUM(pl.ms) AS ms, MAX(pl.started_at) AS last,
-      (SELECT score FROM scores s WHERE s.game = g.slug AND s.month = 'all' AND s.player_id = ?) AS best
-      FROM plays pl JOIN games g ON g.slug = pl.game WHERE pl.player_id = ? GROUP BY g.slug ORDER BY last DESC`).bind(id, id).all(),
+      (SELECT score FROM scores s WHERE s.game = g.slug AND s.month = 'all' AND s.player_id = ?) AS best,
+      (SELECT xp FROM game_xp x WHERE x.game = g.slug AND x.player_id = ?) AS gxp
+      FROM plays pl JOIN games g ON g.slug = pl.game WHERE pl.player_id = ? GROUP BY g.slug ORDER BY last DESC`).bind(id, id, id).all(),
     DB.prepare('SELECT title FROM titles WHERE player_id = ? ORDER BY at DESC').bind(id).all(),
   ]);
   const mine = me && me.id === id;
@@ -249,24 +272,28 @@ async function profilePage(DB, req, env, id) {
   const hall = await hallTrophies(DB, id);
   const trophies = trophyCase(hall, g, mine);
   const inventory = mine ? await inventoryHTML(DB, p, pub, trophies) : '';
+  const friends = mine ? friendsHTML(await listFriends(DB, id), await incomingRequests(DB, id)) : '';
+  const fbtn = me && !mine ? friendButton(id, await friendState(DB, me.id, id)) : '';
+  const anyLevel = games.results.some(r => r.gxp);
   const body = `<div class="prof">${mine ? `<a href="#inventory" title="Change your icon and frame">${avatar(pub)}</a>` : avatar(pub)}<div><h1 style="margin:0">${esc(pub.name)}</h1>${pub.title ? `<div style="color:var(--violet);font-weight:600">${esc(pub.title)}</div>` : ''}
-<div class="muted">Level ${lv} · ${pub.xp.toLocaleString('en-US')} XP</div><div class="xp" style="margin-top:6px"><i style="width:${Math.min(100, Math.round((pub.xp - floor) / Math.max(1, next - floor) * 100))}%"></i></div></div></div>
+<div class="muted">Level ${lv} · ${pub.xp.toLocaleString('en-US')} XP</div><div class="xp" style="margin-top:6px"><i style="width:${Math.min(100, Math.round((pub.xp - floor) / Math.max(1, next - floor) * 100))}%"></i></div>${fbtn ? `<div style="margin-top:10px">${fbtn}</div><div id="friendMsg"></div>` : ''}</div></div>
 ${inventory}
+${friends}
 ${mine ? `<h2>Your profile</h2><form class="form" id="profForm"><input name="name" maxlength="18" value="${esc(pub.name)}" aria-label="Display name">
 ${titles.results.length ? `<select name="title" style="padding:10px;border-radius:12px;background:var(--panel2);color:var(--text);border:1px solid var(--line)"><option value="">No title</option>${titles.results.map(t => `<option${t.title === pub.title ? ' selected' : ''}>${esc(t.title)}</option>`).join('')}</select>` : ''}
 <div style="display:flex;gap:8px"><button class="btn" type="submit">Save</button><button class="btn ghost" type="button" id="signOut">Sign out</button></div><div id="profMsg"></div></form>${growth}
 <details class="danger" style="margin-top:28px"><summary class="muted">Delete my account</summary><p class="muted">This removes your profile, linked sign-ins, scores, gems and play history for good. See <a href="/data-deletion">data deletion</a>.</p>
 <form class="form" id="delForm"><input name="confirm" placeholder="Type DELETE" aria-label="Type DELETE to confirm" autocomplete="off"><button class="btn ghost" type="submit">Delete my account</button><div id="delMsg"></div></form></details>` : ''}
-<h2>Games played</h2>${games.results.length ? `<table class="t"><tr><th>Game</th><th>Best</th><th>Played</th></tr>${games.results.map(r => `<tr><td><a href="/play/${esc(r.slug)}">${esc(r.title)}</a></td><td>${r.best == null ? '<span class="muted">-</span>' : `${r.best.toLocaleString('en-US')} <span class="muted">${esc(r.score_label.toLowerCase())}</span>`}</td><td>${Math.max(1, Math.round(r.ms / 60000))} min</td></tr>`).join('')}</table>` : '<p class="muted">No games yet.</p>'}
+<h2>Games played</h2>${games.results.length ? `<table class="t"><tr><th>Game</th>${anyLevel ? '<th>Level</th>' : ''}<th>Best</th><th>Played</th></tr>${games.results.map(r => `<tr><td><a href="/play/${esc(r.slug)}">${esc(r.title)}</a></td>${anyLevel ? `<td>${r.gxp ? gameLevel(r.gxp).level : '<span class="muted">-</span>'}</td>` : ''}<td>${r.best == null ? '<span class="muted">-</span>' : `${r.best.toLocaleString('en-US')} <span class="muted">${esc(r.score_label.toLowerCase())}</span>`}</td><td>${Math.max(1, Math.round(r.ms / 60000))} min</td></tr>`).join('')}</table>` : '<p class="muted">No games yet.</p>'}
 ${mine ? '' : `<h2>Trophies</h2>${trophies}`}
 ${titles.results.length ? `<h2>Titles</h2><ul>${titles.results.map(t => `<li>${esc(t.title)}</li>`).join('')}</ul>` : ''}`;
-  const script = mine ? `<script>${INVENTORY_JS}
+  const script = mine ? `<script>${INVENTORY_JS}${FRIENDS_JS}
 document.getElementById('profForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);const r=await fetch('/api/me',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:f.get('name'),title:f.has('title')?f.get('title'):undefined})});document.getElementById('profMsg').innerHTML=r.ok?'<div class="note ok">Saved.</div>':'<div class="note err">Couldn\\'t save.</div>';if(r.ok)setTimeout(()=>location.reload(),500)};
 document.getElementById('delForm').onsubmit=async e=>{e.preventDefault();const c=new FormData(e.target).get('confirm');const r=await fetch('/api/me/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({confirm:c})});const j=await r.json().catch(()=>({}));if(r.ok){location.href='/data-deletion?done=1';return}document.getElementById('delMsg').innerHTML='<div class="note err"></div>';document.getElementById('delMsg').firstChild.textContent=j.error||'Could not delete.'};
 document.getElementById('signOut').onclick=async()=>{await fetch('/api/auth/signout',{method:'POST',headers:{'content-type':'application/json'},body:'{}'});location.href='/'};
 const ic=document.getElementById('inviteCopy');if(ic)ic.onclick=async()=>{const i=document.getElementById('inviteUrl');i.select();try{await navigator.clipboard.writeText(i.value)}catch(e){document.execCommand('copy')}ic.textContent='Copied'};
 const is=document.getElementById('inviteShare');if(is&&navigator.share)is.hidden=false;if(is)is.onclick=()=>navigator.share({title:'RookieGamers',text:'Play free games with me on RookieGamers.',url:document.getElementById('inviteUrl').value}).catch(()=>{});
-</script>` : '';
+</script>` : fbtn ? `<script>${FRIENDS_JS}</script>` : '';
   return html(layout({ title: pub.name, me, body, scripts: script }));
 }
 

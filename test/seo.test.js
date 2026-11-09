@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { fakeD1 } from './d1.js';
 import { migrate } from '../src/db.js';
 import { ABOUT_PAGE, CREATORS_PAGE, AI_PAGE, FAQ_PAGE, FOOTER_LINKS } from '../src/seo/copy.js';
-import { ROBOTS_TXT, SITEMAP_XML, LLMS_TXT, LLMS_FULL_TXT } from '../src/seo/files.js';
+import { ROBOTS_TXT, ADS_TXT, SITEMAP_XML, LLMS_TXT, LLMS_FULL_TXT } from '../src/seo/files.js';
 
 // worker.js transitively imports docs/SDK.md (Wrangler's Text rule); give plain Node the same rule.
 register('./md-loader.mjs', import.meta.url);
@@ -142,11 +142,41 @@ test('/llms.txt and /llms-full.txt are text/plain and match the bundled fixtures
   assert.equal(await full.text(), LLMS_FULL_TXT);
 });
 
-/* ---------- ads.txt must stay 404; MCP must keep working ---------- */
+/* ---------- ads.txt + AdSense verification meta; MCP must keep working ---------- */
 
-test('/ads.txt is still 404', async () => {
+test('/ads.txt is text/plain with the exact AdSense publisher line', async () => {
   const env = await setup();
-  assert.equal((await get(env, '/ads.txt')).status, 404);
+  const res = await get(env, '/ads.txt');
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('content-type'), 'text/plain; charset=utf-8');
+  assert.equal(await res.text(), ADS_TXT);
+  assert.equal(ADS_TXT, 'google.com, pub-8081136929405133, DIRECT, f08c47fec0942fa0\n');
+});
+
+test('home and /privacy heads include the google-adsense-account meta', async () => {
+  const env = await setup();
+  const meta = /<meta name="google-adsense-account" content="ca-pub-8081136929405133">/;
+  assert.match(await (await get(env, '/')).text(), meta);
+  assert.match(await (await get(env, '/privacy')).text(), meta);
+  assert.match(await (await get(env, '/about')).text(), meta);
+});
+
+test('home and a pages.js page include google-site-verification', async () => {
+  const env = await setup();
+  const meta = /<meta name="google-site-verification" content="OSHWSdXxLLrQTk12-QAup0nc3IHfnccGLamcxk2hDng">/;
+  assert.match(await (await get(env, '/')).text(), meta);
+  assert.match(await (await get(env, '/privacy')).text(), meta);
+  assert.match(await (await get(env, '/about')).text(), meta);
+});
+
+test('/privacy discloses advertising cookies with Google opt-out links', async () => {
+  const env = await setup();
+  const html = await (await get(env, '/privacy')).text();
+  assert.match(html, /Advertising/);
+  assert.match(html, /href="https:\/\/www\.google\.com\/settings\/ads"/);
+  assert.match(html, /href="https:\/\/www\.aboutads\.info\/choices\/"/);
+  assert.match(html, /href="https:\/\/policies\.google\.com\/technologies\/partner-sites"/);
+  assert.doesNotMatch(html, /consent (banner|management|CMP)|we (show|display) a consent/i);
 });
 
 test('/mcp still answers initialize and tools/list, unaffected by the SEO routes', async () => {

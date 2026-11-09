@@ -206,3 +206,11 @@ test('public SEO copy makes no sign-in on/off claim (deployment-dependent)', asy
     assert.doesNotMatch(t, /as a guest|never need (one|an account)|guests can/i, p);
   }
 });
+
+test('markdown renders headings from Windows (CRLF) files, down to ####', async () => {
+  const { markdown } = await import('../src/pages.js');
+  const html = markdown('### Cloud saves\r\nText\r\n#### The ad terms\r\n');
+  assert.match(html, /<h3 id="cloud-saves">Cloud saves<\/h3>/);
+  assert.match(html, /<h4 id="the-ad-terms">The ad terms<\/h4>/);
+  assert.ok(!html.includes('\r'));
+});

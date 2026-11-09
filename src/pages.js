@@ -378,11 +378,11 @@ document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{await fet
 export function markdown(md) {
   const inline = s => esc(s).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+|\/[^)\s]*)\)/g, '<a href="$2">$1</a>');
   const slug = s => s.toLowerCase().replace(/<[^>]+>/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-  const out = [], lines = md.split('\n');
+  const out = [], lines = md.replace(/\r\n?/g, '\n').split('\n');
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i];
     if (l.startsWith('```')) { const code = []; while (++i < lines.length && !lines[i].startsWith('```')) code.push(lines[i]); out.push(`<pre><code>${esc(code.join('\n'))}</code></pre>`); continue; }
-    const h = /^(#{1,3})\s+(.*)$/.exec(l);
+    const h = /^(#{1,4})\s+(.*)$/.exec(l);
     if (h) { const n = h[1].length; out.push(`<h${n} id="${slug(h[2])}">${inline(h[2])}</h${n}>`); continue; }
     if (l.startsWith('|')) {
       const rows = []; while (i < lines.length && lines[i].startsWith('|')) rows.push(lines[i++]); i--;

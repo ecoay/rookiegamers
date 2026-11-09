@@ -77,6 +77,31 @@ Every game has a monthly board and an all-time board.
 
 Scores from the browser have limits: one submit every 5 seconds per player, and an optional maximum score set by the developer. Browser games can't be fully cheat-proof. For a game with a server, report scores from the server instead (see below).
 
+### Cloud saves
+
+Save a player's progress and it follows them to any device. Signed-in players save to RookieGamers; guests save in their browser, and those saves move to their account the first time they sign in.
+
+| Call | Returns |
+| --- | --- |
+| `rg.data.get(key)` | The saved value, or `null` |
+| `rg.data.set(key, value)` | `{ ok, cloud, version }`. `cloud` is `false` for guests |
+| `rg.data.del(key)` | Same as `set(key, null)` |
+| `rg.data.keys()` | Every key your game saved for this player |
+| `rg.data.flush()` | Sends batched writes now |
+
+A value is anything JSON can hold, up to 256 KB. Each game can keep up to 100 keys and 1 MB per player. Keys are 1 to 64 letters, digits, or `_ . : -`.
+
+Save on checkpoints (a level cleared, an item bought), not every frame. Rapid `set` calls on one key are batched and only the latest value is sent, at most every 3 seconds, and anything pending is sent when the page closes.
+
+If the player saved on another device since this one last loaded, the newer save wins: `set` resolves `{ ok: false, conflict: true, value }` with the newer value, so reload it into your game. Each game only ever sees its own saves.
+
+```js
+const save = (await rg.data.get('progress')) || { level: 1 };
+// ...later, at a checkpoint
+const r = await rg.data.set('progress', save);
+if (r.conflict) loadProgress(r.value);
+```
+
 ### Hall of Fame
 
 At the end of each month, the top 3 on every game's monthly board go into the Hall of Fame forever and earn a title shown across the portal.
@@ -174,7 +199,6 @@ These exist so you can wire them in now. Until they launch they resolve harmless
 
 | Module | Calls | Until launch |
 | --- | --- | --- |
-| Cloud saves | `rg.data.get(key)`, `rg.data.set(key, value)` | Uses `localStorage` |
 | Guilds | `rg.guild.mine()`, `rg.guild.board()` | `null` and `[]` |
 | Wallet (18+, opt-in) | `rg.wallet.get()` | `null`. Never needed to play |
 

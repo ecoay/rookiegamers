@@ -6,6 +6,7 @@ import * as dev from './dev.js';
 import { createShare } from './growth.js';
 import { deleteAccount } from './account.js';
 import { SHOWN, EARN, iconURI, ownedIcons, claimEarned, buyIcon, equipIcon, pickIcon, canPick } from './icons.js';
+import { listSaves, writeSave } from './saves.js';
 import { FRAMES, FRAME_EARN, ownedFrames, claimFrames, buyFrame, equipFrame } from './frames.js';
 import { moneyV1, moneyDev } from './money-api.js';
 
@@ -121,6 +122,18 @@ export async function apiV1(req, env, DB, url) {
     const pid = await bearerPlayer(DB, env, req, g.slug);
     const r = await createShare(DB, dev.siteURL(env), g, pid, b);
     return cjson(r, r.status || 200);
+  }
+
+  // Cloud saves. The player token is scoped to one game, so a game only ever sees its own saves.
+  if (path === '/saves' && (method === 'GET' || method === 'POST')) {
+    const b = method === 'POST' ? await readJSON(req) : {};
+    const g = await getGame(DB, String(method === 'GET' ? url.searchParams.get('game') || '' : b.game || ''));
+    if (!g) return cjson({ error: 'Unknown game.' }, 404);
+    const pid = await bearerPlayer(DB, env, req, g.slug);
+    if (!pid) return cjson({ error: 'Sign in to use cloud saves.', signin: true }, 401);
+    if (method === 'GET') return cjson({ saves: await listSaves(DB, g.slug, pid) });
+    const r = await writeSave(DB, g.slug, pid, { key: b.key, value: b.value, base: b.base });
+    return cjson(r, r.status);
   }
 
   if ((m = path.match(/^\/players\/(p[a-f0-9]{20})$/)) && method === 'GET') {

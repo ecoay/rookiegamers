@@ -72,6 +72,8 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS icons_owned (player_id TEXT NOT NULL, icon TEXT NOT NULL, source TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (player_id, icon))`,
   // Icon frames a player owns (src/frames.js), same sources as icons.
   `CREATE TABLE IF NOT EXISTS frames_owned (player_id TEXT NOT NULL, frame TEXT NOT NULL, source TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (player_id, frame))`,
+  // Cloud saves (src/saves.js): one JSON value per player, game and key, versioned.
+  `CREATE TABLE IF NOT EXISTS saves (game TEXT NOT NULL, player_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, version INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (game, player_id, key))`,
   `CREATE TABLE IF NOT EXISTS submits (game TEXT NOT NULL, player_id TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (game, player_id))`,
 ];
 

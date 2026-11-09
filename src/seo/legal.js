@@ -2,7 +2,7 @@
 // and the other sign-in networks require public URLs for these before an app can go live. They
 // describe what the portal's code actually does; keep them in step when that changes.
 
-export const LEGAL_UPDATED = 'November 7, 2026';
+export const LEGAL_UPDATED = 'November 9, 2026';
 export const OPERATOR = 'Tenacié LLC';
 export const CONTACT = 'support@rookiegamers.com';
 
@@ -10,7 +10,7 @@ const page = (path, name, title, description, h1, body) => ({
   title, description, h1, body,
   jsonld: [{
     '@context': 'https://schema.org', '@type': 'WebPage', '@id': `https://rookiegamers.com${path}#page`,
-    url: `https://rookiegamers.com${path}`, name, description, dateModified: '2026-11-07',
+    url: `https://rookiegamers.com${path}`, name, description, dateModified: '2026-11-09',
     publisher: { '@type': 'Organization', name: 'RookieGamers', parentOrganization: { '@type': 'Organization', name: OPERATOR } },
   }],
 });
@@ -26,7 +26,7 @@ RookieGamers (rookiegamers.com) is run by ${OPERATOR} ("we", "us"). This policy 
 ## What we collect
 - **Your account.** A player ID, the display name you choose, your avatar color, your level and XP, any titles you earn, your gem balance, the profile icons you own and when you joined.
 - **Sign-in details.** If you sign in with email, your email address. If you sign in with or link a social network (for example Google, YouTube, Facebook, Instagram, Threads, TikTok, X, Reddit, Snapchat, LinkedIn, Discord, Twitch, Kick, GitHub, Steam, Telegram or Bluesky), we store that network's ID for you and the basic profile it shares: your name, username and profile picture, and your email when the network provides a verified one. We never get your password for those networks, and we don't post anything on them for you.
-- **Gameplay.** Which games you play, for how long, your scores, leaderboard and Hall of Fame places, and the game that sent you to another game.
+- **Gameplay.** Which games you play, for how long, your scores, leaderboard and Hall of Fame places, the game that sent you to another game, and the save data a game stores for you (cloud saves).
 - **Sharing and invites.** Share links you create, and who joined through your invite link, so we can award gems.
 - **Ads and store.** When you watch an ad to unlock something, a record of that view. When you buy something, the order and what it unlocked. Payments are handled by Stripe, and we never see or store your full card number.
 - **Wallets (18+, optional, not live yet).** If you later connect a crypto wallet, its public address and network. Wallets are never needed to play.
@@ -50,7 +50,7 @@ We use a sign-in cookie to keep you signed in, short-lived cookies while a sign-
 RookieGamers accounts are for people 13 and up. We don't knowingly collect personal information from children under 13. If you believe a child under 13 has made an account, email ${CONTACT} and we'll delete it. Crypto features are 18+ only.
 
 ## How long we keep it
-We keep your account while it's active. When you delete it, your profile, linked sign-ins, sessions, scores, gems, wallets and play history are removed straight away. Purchase and payout records are kept, no longer linked to you, as long as tax and accounting law requires. Hall of Fame entries stay as history, shown as "Deleted player".
+We keep your account while it's active. When you delete it, your profile, linked sign-ins, sessions, scores, gems, saves, wallets and play history are removed straight away. Purchase and payout records are kept, no longer linked to you, as long as tax and accounting law requires. Hall of Fame entries stay as history, shown as "Deleted player".
 
 ## Your choices and rights
 You can change your display name on your profile, sign out, and [delete your account](/data-deletion) at any time. Depending on where you live, you may have the right to see, correct, export or delete your data, or to object to how we use it. Email ${CONTACT} and we'll answer within 30 days.
@@ -116,7 +116,7 @@ export const DELETION_PAGE = page('/data-deletion', 'Delete your RookieGamers da
 2. Open your profile (your name in the top bar).
 3. At the bottom, open **Delete my account**, type DELETE and confirm.
 
-This removes your profile, every linked sign-in (Facebook, Google and the rest), your sessions, scores, gems, wallets and play history straight away. Purchase and payout records are kept for tax law, no longer linked to you. Hall of Fame entries stay as history, shown as "Deleted player". It can't be undone.
+This removes your profile, every linked sign-in (Facebook, Google and the rest), your sessions, scores, gems, saves, wallets and play history straight away. Purchase and payout records are kept for tax law, no longer linked to you. Hall of Fame entries stay as history, shown as "Deleted player". It can't be undone.
 
 If you publish games, remove or transfer your games first, or email us and we'll help.
 

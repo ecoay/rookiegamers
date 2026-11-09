@@ -283,12 +283,101 @@
     document.body.appendChild(el);
   }
 
+  /* ---------- cloud saves ---------- */
+
+  // rg.data: signed in, saves live on the portal and follow the player to any device. Guests (and
+  // test mode) keep them in this browser. Every write also lands in the browser first, so a save
+  // survives a dropped connection. Writes to the portal are batched: rapid set() calls on a key send
+  // only the latest value, at most every 3 seconds. On first sign-in, saves made as a guest move up.
+  const localKey = k => 'rg.data.' + S.game + '.' + k;
+  // Marks a key written while signed out, so only a guest's own saves move to the account that signs in.
+  const guestKey = k => 'rg.guest.' + S.game + '.' + k;
+  const cloud = { pid: null, saves: null, loading: null, timers: {}, waits: {} };
+  async function signedIn() { return S.mode !== 'test' && !!(await freshToken()) && S.user && S.user.id; }
+  async function loadCloud() {
+    const pid = await signedIn();
+    if (!pid) { cloud.pid = null; cloud.saves = null; return null; }
+    if (cloud.pid === pid && cloud.saves) return cloud.saves;
+    if (cloud.loading) return cloud.loading;
+    cloud.loading = (async () => {
+      const r = await call('GET', '/saves?game=' + encodeURIComponent(S.game), null, true);
+      if (!r.ok) return null;
+      cloud.pid = pid; cloud.saves = r.saves || {};
+      // Saves made as a guest in this browser move to the account, unless the account already has that key.
+      const prefix = guestKey(''), moving = [];
+      try { for (let i = 0; i < localStorage.length; i++) { const gk = localStorage.key(i); if (gk && gk.indexOf(prefix) === 0) moving.push(gk.slice(prefix.length)); } } catch (e) { /* storage blocked */ }
+      for (const k of moving) {
+        const v = store.get(localKey(k));
+        if (!cloud.saves[k] && v !== null) {
+          const w = await call('POST', '/saves', { game: S.game, key: k, value: v, base: 0 }, true);
+          if (!w.ok) continue;
+          cloud.saves[k] = { value: v, version: w.version };
+        }
+        store.del(guestKey(k));
+      }
+      return cloud.saves;
+    })();
+    try { return await cloud.loading; } finally { cloud.loading = null; }
+  }
+  async function flush(k) {
+    delete cloud.timers[k];
+    const waits = cloud.waits[k] || []; delete cloud.waits[k];
+    const saves = await loadCloud();
+    let r;
+    if (!saves) r = ok({ cloud: false });
+    else {
+      const cur = saves[k], v = store.get(localKey(k));
+      r = await call('POST', '/saves', { game: S.game, key: k, value: v, base: cur ? cur.version : 0 }, true);
+      if (r.ok) { if (v === null) delete saves[k]; else saves[k] = { value: v, version: r.version }; r = ok({ cloud: true, version: r.version }); }
+      else if (r.conflict) {
+        // Another device saved first. Its save wins; hand it back so the game can reload it.
+        const c = r.current;
+        if (c) { saves[k] = c; store.set(localKey(k), c.value); } else { delete saves[k]; store.del(localKey(k)); }
+        r = bad(r.error, { conflict: true, value: c ? c.value : null });
+      }
+    }
+    waits.forEach(fn => fn(r));
+  }
+  const data = {
+    // The saved value, or null. Signed in, it's the cloud copy (refreshed when the player changes).
+    async get(k) {
+      await ready();
+      const saves = await loadCloud();
+      if (saves) { const c = saves[k]; if (c) store.set(localKey(k), c.value); return c ? c.value : (cloud.timers[k] ? store.get(localKey(k)) : null); }
+      return store.get(localKey(k));
+    },
+    // Saves a value (anything JSON can hold, up to 256 KB). Resolves once the portal has it, with
+    // { ok: false, conflict: true, value } if a newer save from another device won.
+    async set(k, v) {
+      await ready();
+      k = String(k);
+      if (v === undefined) v = null;
+      if (v === null) store.del(localKey(k)); else store.set(localKey(k), v);
+      if (S.mode === 'test' || !(await signedIn())) { if (v === null) store.del(guestKey(k)); else store.set(guestKey(k), 1); return ok({ cloud: false }); }
+      store.del(guestKey(k));
+      return new Promise(resolve => {
+        (cloud.waits[k] = cloud.waits[k] || []).push(resolve);
+        clearTimeout(cloud.timers[k]);
+        cloud.timers[k] = setTimeout(() => flush(k), 3000);
+      });
+    },
+    async del(k) { return data.set(k, null); },
+    // Every key this game has saved for the player.
+    async keys() {
+      await ready();
+      const saves = await loadCloud();
+      if (saves) return Object.keys(saves);
+      const prefix = localKey(''), out = [];
+      try { for (let i = 0; i < localStorage.length; i++) { const lk = localStorage.key(i); if (lk && lk.indexOf(prefix) === 0) out.push(lk.slice(prefix.length)); } } catch (e) { /* storage blocked */ }
+      return out;
+    },
+    // Sends any batched writes now. Call it before the page closes or on a checkpoint.
+    async flush() { await Promise.all(Object.keys(cloud.timers).map(k => { clearTimeout(cloud.timers[k]); return flush(k); })); return ok(); },
+  };
+  window.addEventListener('pagehide', () => { if (Object.keys(cloud.timers).length) data.flush(); });
+
   /* ---------- coming later: safe to call now ---------- */
 
-  const data = {
-    async get(k) { await ready(); return store.get('rg.data.' + S.game + '.' + k); },
-    async set(k, v) { await ready(); store.set('rg.data.' + S.game + '.' + k, v); return ok(); },
-  };
   /* ---------- sharing and invites ---------- */
 
   // A share link from the portal. Signed in, it credits the player for the friends it brings.
@@ -421,7 +510,7 @@
   };
   const wallet = { available: false, async get() { return null; } };
 
-  window.rg = { version: '1.3.0', portal: PORTAL, init, game, user, scores, fame, promo, share, data, invite, store: storeApi, guild, ads, audio, wallet,
+  window.rg = { version: '1.4.0', portal: PORTAL, init, game, user, scores, fame, promo, share, data, invite, store: storeApi, guild, ads, audio, wallet,
     get mode() { return S.mode; } };
   if (SCRIPT && SCRIPT.dataset.game) init({ game: SCRIPT.dataset.game });
 })();

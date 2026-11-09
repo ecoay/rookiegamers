@@ -82,10 +82,12 @@ export async function rankOf(DB, game, month, playerId) {
   return r.n + 1;
 }
 
-export async function topScores(DB, game, month = monthKey(), limit = 10) {
+// only: a list of player ids (a friends board); null for everyone.
+export async function topScores(DB, game, month = monthKey(), limit = 10, only = null) {
   const dir = game.score_order === 'asc' ? 'ASC' : 'DESC';
+  const ids = only ? only.slice(0, 501) : null;
   const rows = (await DB.prepare(`SELECT s.player_id, s.score, s.at, p.name, p.hue, p.title FROM scores s JOIN players p ON p.id = s.player_id
-    WHERE s.game = ? AND s.month = ? ORDER BY s.score ${dir}, s.at ASC LIMIT ?`).bind(game.slug, month, Math.min(100, Math.max(1, limit | 0))).all()).results;
+    WHERE s.game = ? AND s.month = ?${ids ? ` AND s.player_id IN (${ids.map(() => '?').join(',')})` : ''} ORDER BY s.score ${dir}, s.at ASC LIMIT ?`).bind(game.slug, month, ...(ids || []), Math.min(100, Math.max(1, limit | 0))).all()).results;
   return rows.map((r, i) => ({ rank: i + 1, player: { id: r.player_id, name: r.name, hue: r.hue, title: r.title }, score: r.score, at: r.at }));
 }
 

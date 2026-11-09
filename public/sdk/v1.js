@@ -222,7 +222,9 @@
       if (S.mode === 'test') return ok({ rows: S.test.scores.slice(0, o.limit || 10) });
       const q = new URLSearchParams({ board: o.board === 'alltime' ? 'alltime' : 'monthly', limit: String(o.limit || 10) });
       if (o.month) q.set('month', o.month);
-      return call('GET', '/scores/' + S.game + '?' + q);
+      // friends: true ranks only the player and their friends.
+      if (o.friends) { if (!await freshToken()) return bad('Sign in to see your friends\' scores.', { signin: true }); q.set('friends', '1'); }
+      return call('GET', '/scores/' + S.game + '?' + q, null, !!o.friends);
     },
     async mine(o) {
       await ready(); o = o || {};
@@ -282,6 +284,49 @@
     el.querySelector('.no').onclick = () => el.remove();
     document.body.appendChild(el);
   }
+
+  /* ---------- friends and the game's own level ---------- */
+
+  // One friends list across RookieGamers. list() gives each friend's public profile (name, icon,
+  // frame, RookieGamers level) plus, for this game, whether they play it and their level in it.
+  const friendsApi = {
+    async list() {
+      await ready();
+      if (S.mode === 'test') return ok({ friends: [{ id: 'p_friend', name: 'Test Friend', avatar: null, frame: null, level: 5, title: null, plays: true, lastPlayed: Date.now(), gameLevel: 2 }], requests: [] });
+      if (!await freshToken()) return bad('Sign in to see your friends.', { signin: true });
+      return call('GET', '/friends?game=' + encodeURIComponent(S.game), null, true);
+    },
+    // Sends a friend request (or accepts theirs). Resolves { ok, state: 'sent' | 'friends' }.
+    async add(player) { return friendDo(player, 'add'); },
+    async accept(player) { return friendDo(player, 'accept'); },
+    async remove(player) { return friendDo(player, 'remove'); },
+    // An invite link: whoever signs up through it becomes the player's friend.
+    async invite(o) { return invite.link(o); },
+  };
+  async function friendDo(player, action) {
+    await ready();
+    if (S.mode === 'test') return ok({ state: action === 'remove' ? 'none' : 'sent' });
+    if (!await freshToken()) return bad('Sign in first.', { signin: true });
+    return call('POST', '/friends', { game: S.game, player: String(player && player.id || player || ''), action }, true);
+  }
+
+  // The game's own level for the player, separate from their RookieGamers level. A tenth of the XP
+  // also counts toward the RookieGamers level (capped daily).
+  const level = {
+    async get() {
+      await ready();
+      if (S.mode === 'test') { const xp = S.test.xp || 0; const l = Math.floor((1 + Math.sqrt(1 + 8 * xp / 100)) / 2); return ok({ level: l, xp, levelXp: 50 * l * (l - 1), nextXp: 50 * (l + 1) * l }); }
+      if (!await freshToken()) return bad('Sign in to earn levels.', { signin: true });
+      return call('GET', '/level?game=' + encodeURIComponent(S.game), null, true);
+    },
+    // Gives 1 to 1000 XP. Resolves { ok, level, xp, levelXp, nextXp, levelUp }.
+    async addXp(xp) {
+      await ready();
+      if (S.mode === 'test') { const before = (await level.get()).level; S.test.xp = (S.test.xp || 0) + Math.max(0, Math.floor(xp)); const r = await level.get(); return ok(Object.assign(r, { levelUp: r.level > before })); }
+      if (!await freshToken()) return bad('Sign in to earn levels.', { signin: true });
+      return call('POST', '/level', { game: S.game, xp }, true);
+    },
+  };
 
   /* ---------- cloud saves ---------- */
 
@@ -510,7 +555,7 @@
   };
   const wallet = { available: false, async get() { return null; } };
 
-  window.rg = { version: '1.4.0', portal: PORTAL, init, game, user, scores, fame, promo, share, data, invite, store: storeApi, guild, ads, audio, wallet,
+  window.rg = { version: '1.5.0', portal: PORTAL, init, game, user, scores, friends: friendsApi, level, fame, promo, share, data, invite, store: storeApi, guild, ads, audio, wallet,
     get mode() { return S.mode; } };
   if (SCRIPT && SCRIPT.dataset.game) init({ game: SCRIPT.dataset.game });
 })();

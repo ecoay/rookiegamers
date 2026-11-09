@@ -70,7 +70,7 @@ Every game has a monthly board and an all-time board.
 | Call | Returns |
 | --- | --- |
 | `rg.scores.submit({ score })` | `{ ok, best, rank }`, or `{ ok: false, signin: true }` for guests |
-| `rg.scores.top({ board, limit, month })` | `{ ok, rows: [{ rank, player: { id, name, title }, score }] }` |
+| `rg.scores.top({ board, limit, month, friends })` | `{ ok, rows: [{ rank, player: { id, name, title }, score }] }`. `friends: true` ranks only the player and their friends |
 | `rg.scores.mine({ board })` | `{ ok, rank, score }` for the signed-in player |
 
 `board` is `"monthly"` (default) or `"alltime"`. `month` is `"YYYY-MM"` for a past month. Scores are whole numbers. Each game sets whether higher or lower is better, and whether the board keeps each player's **best** score or adds up a **sum** of points.
@@ -100,6 +100,43 @@ const save = (await rg.data.get('progress')) || { level: 1 };
 // ...later, at a checkpoint
 const r = await rg.data.set('progress', save);
 if (r.conflict) loadProgress(r.value);
+```
+
+### Friends
+
+Every player has one friends list across all RookieGamers games. Players send and accept requests on each other's profiles, and anyone who signs up through a player's invite link becomes their friend straight away. Your game can read the list and add friends too.
+
+| Call | Returns |
+| --- | --- |
+| `rg.friends.list()` | `{ ok, friends, requests }`, or `{ ok: false, signin: true }` for guests |
+| `rg.friends.add(player)` | `{ ok, state }`: `"sent"`, or `"friends"` if they had already asked |
+| `rg.friends.accept(player)` | `{ ok, state: "friends" }` |
+| `rg.friends.remove(player)` | `{ ok, state: "none" }`. Also declines or cancels a request |
+| `rg.friends.invite()` | An invite link, same as `rg.invite.link()` |
+
+Each friend has their public profile (`id, name, avatar, frame, level, title`), plus `plays` (whether they have played your game), `lastPlayed` and `gameLevel` (their level in your game). `requests` are players waiting for an answer. `player` is a player id or a friend object. A player can have up to 500 friends.
+
+```js
+const { friends } = await rg.friends.list();
+const here = friends.filter(f => f.plays);
+showFriends(here); // e.g. "3 friends play this. Challenge one?"
+const board = await rg.scores.top({ friends: true });
+```
+
+### Game levels
+
+Your game can give players its own XP and level, separate from their RookieGamers level, on the same curve (level 2 at 100 XP, level 3 at 300, level 4 at 600...). It shows on their profile and to their friends.
+
+| Call | Returns |
+| --- | --- |
+| `rg.level.get()` | `{ ok, level, xp, levelXp, nextXp }` |
+| `rg.level.addXp(xp)` | The same, plus `given` and `levelUp: true` when they went up a level |
+
+`levelXp` and `nextXp` are where this level starts and the next begins, for a progress bar. Give 1 to 1,000 XP a call and up to 10,000 a day per player. A tenth of it also counts toward the player's RookieGamers level, up to 100 a day from each game.
+
+```js
+const r = await rg.level.addXp(150);
+if (r.levelUp) celebrate(r.level);
 ```
 
 ### Hall of Fame

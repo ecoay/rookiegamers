@@ -23,6 +23,8 @@ export async function deleteAccount(DB, pid) {
     by('DELETE FROM icons_owned WHERE player_id = ?'),
     by('DELETE FROM frames_owned WHERE player_id = ?'),
     by('DELETE FROM saves WHERE player_id = ?'),
+    DB.prepare('DELETE FROM friends WHERE a = ? OR b = ?').bind(pid, pid),
+    by('DELETE FROM game_xp WHERE player_id = ?'),
     by('DELETE FROM submits WHERE player_id = ?'),
     by('DELETE FROM dev_keys WHERE player_id = ?'),
     by('DELETE FROM developers WHERE player_id = ?'),

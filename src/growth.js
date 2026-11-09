@@ -1,3 +1,4 @@
+import { befriend } from './friends.js';
 import { now, newId, DAY, getPlayer, cleanText } from './db.js';
 
 // Word of mouth: share links, referrals and gems.
@@ -43,6 +44,7 @@ export async function recordReferral(DB, pid, via, shareId) {
   via = validVia(via);
   if (!via || via === pid || !await getPlayer(DB, via)) return false;
   const r = await DB.prepare('UPDATE players SET referred_by = ? WHERE id = ? AND referred_by IS NULL').bind(via, pid).run();
+  if (r.meta && r.meta.changes) await befriend(DB, via, pid);
   if (shareId && /^s[a-f0-9]{12}$/.test(shareId)) await DB.prepare('UPDATE shares SET signups = signups + 1 WHERE id = ? AND player_id = ?').bind(shareId, via).run();
   return !!(r.meta && r.meta.changes);
 }

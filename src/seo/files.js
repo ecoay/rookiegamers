@@ -114,7 +114,7 @@ URL: https://rookiegamers.com/ai
 We want to remove the barriers to entry into the creative arts. AI tools can help more people make games, so we are building for them. Developers who do not use AI are just as welcome, and so are their games.
 
 ## What exists today
-- A public RookieGamers MCP server at https://rookiegamers.com/mcp. Anyone can use its read-only tools, such as SDK docs, a game scaffold, the portal game list and leaderboards.
+- A public RookieGamers MCP server at https://rookiegamers.com/mcp. Developers sign in with their RookieGamers account (AI apps open the sign-in page for you) or use an API key, and get the SDK docs, a game scaffold, publishing, stats and leaderboards.
 - Tools that change your games, such as creating, uploading and publishing, need a developer API key from the [Publish](https://rookiegamers.com/dev) page.
 - Setup material for Claude Code (a plugin and a direct MCP setup), Codex and the xAI API, plus a command-line tool for people who prefer to work by hand. These client setups have not been verified end to end.
 Exact setup steps are on the [Publish](https://rookiegamers.com/dev) page.

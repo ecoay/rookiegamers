@@ -16,7 +16,7 @@ It runs on Cloudflare: one Worker, one D1 database and one R2 bucket.
 | Sign-in | `src/auth.js` | Email link (Resend); Google, YouTube, Discord, X, Twitch, GitHub, Facebook, Instagram, Threads, TikTok, Reddit, Snapchat, LinkedIn and Kick over OAuth; Steam (OpenID), Telegram (login widget) and Bluesky (atproto OAuth) in `src/social-extra.js`; and any OpenID Connect provider through `OIDC_*` secrets. SceneSpot becomes the main sign-in by setting those secrets. Every sign-in method is an identity row on one player, so linking SceneSpot later keeps the account |
 | Player tokens | `src/tokens.js` | ES256 JWTs (15 minutes, `aud` = game slug). Public keys at `/.well-known/jwks.json` so game servers can check them |
 | Developer API | `src/dev.js` (`/api/dev`) | API keys, create and edit games, upload builds to R2, publishing checks, publish, stats, server keys |
-| MCP server | `src/mcp.js` (`/mcp`) | The developer API as MCP tools, plus the SDK docs and a starter game. One server for Claude Code, Codex, Grok and any other MCP client |
+| MCP server | `src/mcp.js` (`/mcp`), `src/oauth.js` | The developer API as MCP tools, plus the SDK docs and a starter game. One server for Claude, ChatGPT, Grok, Claude Code, Codex and any other MCP client. AI apps sign in with OAuth (`/oauth/*`); API keys still work. Store listing steps: `integrations/STORES.md` |
 | CLI | `public/rg.mjs` (served at `/rg.mjs`) | `init`, `create`, `deploy`, `publish`, `games`, `stats`, `server-key`. No dependencies |
 | Integrations | `integrations/`, `.claude-plugin/` | Claude Code plugin (MCP server, skill, `/rg-publish`), Codex config and `AGENTS.md`, Grok remote-MCP setup and script |
 | Docs | `docs/SDK.md` | One source for `/docs`, the `get_sdk_docs` tool and the agent skills |

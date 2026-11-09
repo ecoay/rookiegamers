@@ -2,8 +2,7 @@
   "mcpServers": {
     "rookiegamers": {
       "type": "http",
-      "url": "https://rookiegamers.com/mcp",
-      "headers": { "Authorization": "Bearer ${ROOKIEGAMERS_API_KEY}" }
+      "url": "https://rookiegamers.com/mcp"
     }
   }
 }

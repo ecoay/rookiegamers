@@ -1,7 +1,13 @@
 # RookieGamers for Codex
 
-1. Make an API key at https://rookiegamers.com/dev and add it to your shell: `export ROOKIEGAMERS_API_KEY=rgk_...`
-2. Add the MCP server to `~/.codex/config.toml` (or a project's `.codex/config.toml`):
+1. Add the MCP server and sign in with your RookieGamers developer account in the browser:
+
+```
+codex mcp add rookiegamers --url https://rookiegamers.com/mcp
+codex mcp login rookiegamers
+```
+
+2. Or use an API key instead: make one at https://rookiegamers.com/dev, `export ROOKIEGAMERS_API_KEY=rgk_...`, and add this to `~/.codex/config.toml` (or a project's `.codex/config.toml`):
 
 ```toml
 [mcp_servers.rookiegamers]

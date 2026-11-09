@@ -46,7 +46,8 @@ Secrets (Workers & Pages, rookiegamers, Settings, Variables and Secrets):
 | (none) | Bluesky sign-in needs no keys: the portal publishes its client metadata at `/auth/bluesky/client-metadata.json`. Set `BLUESKY_LOGIN=0` to hide it |
 | `STRIPE_SECRET_KEY` | The store and payouts. The portal's Stripe account is the seller; turn on Connect (Express) for developer payouts |
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhooks at `https://rookiegamers.com/stripe/webhook`. Send `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `invoice.paid`, `customer.subscription.deleted`, `charge.refunded`, and `account.updated` (from connected accounts too) |
-| `ADSENSE_CLIENT` | Optional. `ca-pub-...` once AdSense approves rookiegamers.com for H5 Games Ads. Without it, ads are sponsors and "play next" house ads |
+| `ADSENSE_CLIENT` | Optional. `ca-pub-...` once AdSense approves rookiegamers.com for H5 Games Ads. Without it, ads are sponsors and "play next" house ads. Also adds Google's line to /ads.txt |
+| `ADS_TXT` | Optional. Extra seller lines for /ads.txt, one per line, exactly as an ad network gives them (for example `example.com, 12345, DIRECT, abc`). With neither this nor `ADSENSE_CLIENT`, /ads.txt lists no sellers |
 
 Variables in `wrangler.jsonc`: `SITE_URL` (also the token issuer), `EMAIL_FROM`, `STRIPE_TAX` (`"1"` turns on Stripe Tax at checkout), `ADS_TEST` (`"1"` shows Google test ads), `PROMO_CPM_CENTS` (the price of promoted clips per 1000 views), `OPEN_DEVELOPERS` (`"1"` lets anyone signed in become a developer; otherwise it takes an invite), and `GAMES_HOST` once `games.rookiegamers.com` routes to this Worker. Until `GAMES_HOST` is set, hosted games are served from `/hosted/<slug>/` in an opaque-origin sandbox.
 

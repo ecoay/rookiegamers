@@ -5,6 +5,7 @@
 
 import { canonical, ldJSON } from './seo/site.js';
 import { FOOTER_LINKS, HOME_JSONLD } from './seo/copy.js';
+import { gameListJSONLD } from './seo/dynamic.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const data = v => JSON.stringify(v).replace(/</g, '\\u003c');
@@ -89,12 +90,12 @@ export function homePage({ me, games, site }) {
   const desc = 'Indie games. Instant play. Free web games from indie developers, with one account across every game.';
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${t}</title><meta name="description" content="${esc(desc)}">
-<meta property="og:site_name" content="RookieGamers"><meta property="og:title" content="${t}"><meta property="og:description" content="${esc(desc)}"><meta property="og:type" content="website">
-<meta property="og:url" content="${esc(site)}/"><link rel="canonical" href="${esc(canonical('/'))}"><meta property="og:image" content="${esc(site)}/img/og.jpg"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="${esc(site)}/img/og.jpg">
+<meta property="og:site_name" content="RookieGamers"><meta property="og:title" content="${t}"><meta property="og:description" content="${esc(desc)}"><meta property="og:type" content="website"><meta property="og:locale" content="en_US">
+<meta property="og:url" content="${esc(canonical('/'))}"><link rel="canonical" href="${esc(canonical('/'))}"><meta property="og:image" content="${esc(canonical('/img/og.jpg'))}"><meta property="og:image:alt" content="RookieGamers: play something weird"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="${esc(canonical('/img/og.jpg'))}"><meta name="twitter:title" content="${t}"><meta name="twitter:description" content="${esc(desc)}"><meta name="theme-color" content="#0f0d16">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bangers&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="preload" as="image" href="/img/hero.webp" imagesrcset="/img/hero-sm.webp 1086w, /img/hero.webp 2172w" imagesizes="(max-width: 900px) 100vw, calc(100vw - 120px)">
-<link rel="stylesheet" href="/home.css">${HOME_JSONLD.map(block => `<script type="application/ld+json">${ldJSON(block)}</script>`).join('')}</head><body class="rg-home">
+<link rel="stylesheet" href="/home.css">${[...HOME_JSONLD, ...gameListJSONLD(games)].map(block => `<script type="application/ld+json">${ldJSON(block)}</script>`).join('')}</head><body class="rg-home">
 <aside class="rail" aria-label="Sections">
 ${rail.map(([h, l, ic, on]) => `<a href="${esc(h)}"${on ? ' class="on" aria-current="page"' : ''}>${icon(ic)}<span>${l}</span></a>`).join('')}
 <a class="w3" href="#web3">${icon('link')}<span>WEB3<br>ARCADE</span></a>

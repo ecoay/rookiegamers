@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import { fakeD1 } from './d1.js';
 import { migrate } from '../src/db.js';
 import { ABOUT_PAGE, CREATORS_PAGE, AI_PAGE, FAQ_PAGE, FOOTER_LINKS } from '../src/seo/copy.js';
-import { ROBOTS_TXT, SITEMAP_XML, LLMS_TXT, LLMS_FULL_TXT } from '../src/seo/files.js';
+import { ROBOTS_TXT, LLMS_TXT, LLMS_FULL_TXT } from '../src/seo/files.js';
+import { STATIC_PATHS, adsTxt } from '../src/seo/dynamic.js';
 
 // worker.js transitively imports docs/SDK.md (Wrangler's Text rule); give plain Node the same rule.
 register('./md-loader.mjs', import.meta.url);
@@ -13,14 +14,15 @@ const { default: worker } = await import('../src/worker.js');
 const SITE = 'https://rookiegamers.com';
 
 const noAsset = { fetch: async () => new Response('Not found', { status: 404 }) };
-async function setup() {
+async function setup(extra = {}) {
   const DB = fakeD1();
   await migrate(DB);
-  return { DB, ASSETS: noAsset };
+  return { DB, ASSETS: noAsset, ...extra };
 }
-async function get(env, path) {
-  return worker.fetch(new Request(SITE + path), env, {});
+async function get(env, path, site = SITE) {
+  return worker.fetch(new Request(site + path), env, {});
 }
+const ldBlocks = html => [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map(m => JSON.parse(m[1]));
 
 /* ---------- the four new pages ---------- */
 
@@ -75,8 +77,55 @@ for (const slug of ['unsays', 'buyyourfriends']) {
     assert.equal(webPage.mainEntity['@id'], videoGame['@id']);
     assert.equal(webPage.breadcrumb['@id'], breadcrumb['@id']);
     assert.equal(videoGame.breadcrumb, undefined, 'breadcrumb must not be on the VideoGame');
+    assert.equal(videoGame.isAccessibleForFree, true);
+    assert.equal(videoGame.offers.price, '0');
+    assert.match(html, /<meta property="og:image" content="https:\/\/rookiegamers\.com\/img\/og\.jpg">/);
+    assert.match(html, /<meta name="twitter:card" content="summary_large_image">/);
+    assert.match(html, new RegExp(`<meta property="og:url" content="${SITE}/play/${slug}">`));
   });
 }
+
+test('every live game gets VideoGame data, its cover as the preview image, and a meta description', async () => {
+  const env = await setup();
+  await env.DB.prepare("UPDATE games SET live = 1, url = 'https://handofnine.com/', cover = 'https://handofnine.com/cover.png' WHERE slug = 'handofnine'").run();
+  const html = await (await get(env, '/play/handofnine')).text();
+  const game = ldBlocks(html)[0]['@graph'].find(n => n['@type'] === 'VideoGame');
+  assert.equal(game.name, 'Hand of Nine');
+  assert.equal(game.image, 'https://handofnine.com/cover.png');
+  assert.deepEqual(game.genre, ['cards', 'puzzle']);
+  assert.equal(game.playMode, 'SinglePlayer');
+  assert.match(html, /<meta property="og:image" content="https:\/\/handofnine\.com\/cover\.png">/);
+  assert.match(html, /<meta name="description" content="Arrange nine cards[^"]*Play free in your browser on RookieGamers\.">/);
+  assert.match(html, /<title>Play Hand of Nine free online · RookieGamers<\/title>/);
+});
+
+test('a hosted game cover inside its build resolves to an absolute image URL', async () => {
+  const { gameImage } = await import('../src/seo/dynamic.js');
+  assert.equal(gameImage({}, { slug: 'youcult', kind: 'hosted', cover: 'img/cover.png' }), 'https://rookiegamers.com/hosted/youcult/img/cover.png');
+  assert.equal(gameImage({ GAMES_HOST: 'games.example' }, { slug: 'youcult', kind: 'hosted', cover: 'cover.png' }), 'https://games.example/youcult/cover.png');
+  assert.equal(gameImage({}, { slug: 'x', kind: 'linked', cover: 'cover.png' }), null);
+  assert.equal(gameImage({}, { slug: 'x', kind: 'hosted', cover: '../secret' }), null);
+});
+
+test('the home page lists the live games as an ItemList', async () => {
+  const env = await setup();
+  const list = ldBlocks(await (await get(env, '/')).text()).find(b => b['@type'] === 'ItemList');
+  assert.ok(list);
+  assert.ok(list.itemListElement.some(i => i.url === SITE + '/play/unsays'));
+});
+
+test('pages on the workers.dev copy are kept out of search; rookiegamers.com is indexable', async () => {
+  const env = await setup();
+  assert.equal((await get(env, '/about', 'https://rookiegamers.ecoay.workers.dev')).headers.get('x-robots-tag'), 'noindex');
+  assert.equal((await get(env, '/about')).headers.get('x-robots-tag'), null);
+});
+
+test('not-found and share pages are noindex', async () => {
+  const env = await setup();
+  const res = await get(env, '/play/nope');
+  assert.equal(res.status, 404);
+  assert.match(await res.text(), /<meta name="robots" content="noindex">/);
+});
 
 /* ---------- /signin ---------- */
 
@@ -106,17 +155,28 @@ test('/robots.txt is text/plain and matches the bundled fixture, with a Sitemap 
   assert.match(ROBOTS_TXT, /^Sitemap: https:\/\/rookiegamers\.com\/sitemap\.xml$/m);
 });
 
-test('/sitemap.xml is application/xml, valid, and has exactly 14 <loc> entries', async () => {
+test('/sitemap.xml is application/xml and lists the public pages plus every live game from D1', async () => {
   const env = await setup();
   const res = await get(env, '/sitemap.xml');
   assert.equal(res.status, 200);
   assert.match(res.headers.get('content-type'), /application\/xml/);
   const xml = await res.text();
-  assert.equal(xml, SITEMAP_XML);
+  assert.match(xml, /^<\?xml version="1.0" encoding="UTF-8"\?>\n<urlset xmlns="http:\/\/www.sitemaps.org\/schemas\/sitemap\/0.9">/);
   const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map(m => m[1]);
-  assert.equal(locs.length, 14);
-  for (const loc of locs) assert.match(loc, /^https:\/\/rookiegamers\.com/);
-  assert.ok(!locs.includes('https://rookiegamers.com/signin'));
+  for (const p of STATIC_PATHS) assert.ok(locs.includes(SITE + p), p);
+  const live = (await env.DB.prepare('SELECT slug FROM games WHERE live = 1').all()).results.map(r => r.slug);
+  assert.deepEqual(locs.filter(l => l.includes('/play/')).sort(), live.map(s => `${SITE}/play/${s}`).sort());
+  assert.ok(!locs.includes(SITE + '/play/handofnine'), 'hidden games stay out');
+  assert.ok(!locs.includes(SITE + '/signin'));
+  assert.match(xml, /<loc>https:\/\/rookiegamers\.com\/play\/unsays<\/loc><lastmod>\d{4}-\d{2}-\d{2}<\/lastmod>/);
+});
+
+test('a game that goes live joins the sitemap, llms.txt and llms-full.txt without a deploy', async () => {
+  const env = await setup();
+  await env.DB.prepare("UPDATE games SET live = 1, url = 'https://handofnine.com/' WHERE slug = 'handofnine'").run();
+  assert.match(await (await get(env, '/sitemap.xml')).text(), /\/play\/handofnine<\/loc>/);
+  assert.match(await (await get(env, '/llms.txt')).text(), /- \[Hand of Nine\]\(https:\/\/rookiegamers\.com\/play\/handofnine\): Arrange nine cards/);
+  assert.match(await (await get(env, '/llms-full.txt')).text(), /- Hand of Nine \(https:\/\/rookiegamers\.com\/play\/handofnine\), by ecoay: Arrange nine cards/);
 });
 
 test('every sitemap URL actually resolves to 200', async () => {
@@ -129,24 +189,52 @@ test('every sitemap URL actually resolves to 200', async () => {
   }
 });
 
-test('/llms.txt and /llms-full.txt are text/plain and match the bundled fixtures', async () => {
+test('/llms.txt and /llms-full.txt are text/plain, built from the fixtures with the live games filled in', async () => {
   const env = await setup();
   const llms = await get(env, '/llms.txt');
   assert.equal(llms.status, 200);
   assert.match(llms.headers.get('content-type'), /text\/plain/);
-  assert.equal(await llms.text(), LLMS_TXT);
+  const t = await llms.text();
+  const [head, tail] = LLMS_TXT.split('{{GAMES}}');
+  assert.ok(t.startsWith(head) && t.endsWith(tail));
+  assert.ok(!t.includes('{{GAMES}}'));
+  assert.match(t, /- \[unsays\]\(https:\/\/rookiegamers\.com\/play\/unsays\): Things you can't unsay/);
+  assert.match(t, /- \[BuyYourFriends\]\(https:\/\/rookiegamers\.com\/play\/buyyourfriends\): a free web game by ecoay/);
 
   const full = await get(env, '/llms-full.txt');
   assert.equal(full.status, 200);
   assert.match(full.headers.get('content-type'), /text\/plain/);
-  assert.equal(await full.text(), LLMS_FULL_TXT);
+  const f = await full.text();
+  const [fh, ft] = LLMS_FULL_TXT.split('{{GAMES}}');
+  assert.ok(f.startsWith(fh) && f.endsWith(ft));
+  assert.match(f, /- unsays \(https:\/\/rookiegamers\.com\/play\/unsays\), by ecoay: Things you can't unsay/);
 });
 
-/* ---------- ads.txt must stay 404; MCP must keep working ---------- */
+/* ---------- ads.txt, from settings entered in Cloudflare; MCP must keep working ---------- */
 
-test('/ads.txt is still 404', async () => {
+test('/ads.txt with nothing set lists no sellers, but names the owner and a contact', async () => {
   const env = await setup();
-  assert.equal((await get(env, '/ads.txt')).status, 404);
+  const res = await get(env, '/ads.txt');
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type'), /text\/plain/);
+  const t = await res.text();
+  assert.match(t, /^OWNERDOMAIN=rookiegamers\.com$/m);
+  assert.match(t, /^contact=support@rookiegamers\.com$/m);
+  assert.doesNotMatch(t, /DIRECT|RESELLER/);
+});
+
+test('/ads.txt adds Google from ADSENSE_CLIENT and other seller lines from ADS_TXT', async () => {
+  const env = await setup({ ADSENSE_CLIENT: 'ca-pub-1234567890123456',
+    ADS_TXT: 'example-network.com, 9876, RESELLER, abc123\n# a comment\nnot a record\ngoogle.com, pub-1234567890123456, DIRECT, f08c47fec0942fa0\nMANAGERDOMAIN=example.com' });
+  const t = await (await get(env, '/ads.txt')).text();
+  assert.equal(t.match(/^google\.com, pub-1234567890123456, DIRECT, f08c47fec0942fa0$/gm).length, 1, 'no duplicate Google line');
+  assert.match(t, /^example-network\.com, 9876, RESELLER, abc123$/m);
+  assert.match(t, /^MANAGERDOMAIN=example\.com$/m);
+  assert.doesNotMatch(t, /not a record|a comment/);
+  assert.doesNotMatch(t, /No ad networks/);
+  // An Cloudflare text variable may arrive with literal \n separators.
+  assert.match(adsTxt({ ADS_TXT: 'a.com, 1, DIRECT\\nb.com, 2, RESELLER' }), /^a\.com, 1, DIRECT\nb\.com, 2, RESELLER$/m);
+  assert.doesNotMatch(adsTxt({ ADSENSE_CLIENT: 'not-a-pub' }), /google\.com/);
 });
 
 test('/mcp still answers initialize and tools/list, unaffected by the SEO routes', async () => {

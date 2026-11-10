@@ -32,7 +32,7 @@
     "staging": {
       "name": "rookiegamers-staging",
       "workers_dev": true,
-      "d1_databases": [{ "binding": "DB", "database_name": "rookiegamers-staging", "database_id": "00000000-0000-0000-0000-000000000000" }],
+      "d1_databases": [{ "binding": "DB", "database_name": "rookiegamers-staging", "database_id": "97a6f9d2-73eb-49bf-9d83-f6fff1455381" }],
       "r2_buckets": [{ "binding": "GAMES", "bucket_name": "rookiegamers-staging-games" }],
       "triggers": { "crons": [] },
       "vars": { "SITE_URL": "https://rookiegamers-staging.ecoay.workers.dev", "EMAIL_FROM": "RookieGamers <login@rookiegamers.com>", "OPEN_DEVELOPERS": "1", "DEV_LOGIN": "1", "STAGING": "1" }

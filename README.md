@@ -19,6 +19,7 @@ It runs on Cloudflare: one Worker, one D1 database and one R2 bucket.
 | MCP server | `src/mcp.js` (`/mcp`), `src/oauth.js` | The developer API as MCP tools, plus the SDK docs and a starter game. One server for Claude, ChatGPT, Grok, Claude Code, Codex and any other MCP client. AI apps sign in with OAuth (`/oauth/*`); API keys still work. Store listing steps: `integrations/STORES.md` |
 | CLI | `public/rg.mjs` (served at `/rg.mjs`) | `init`, `create`, `deploy`, `publish`, `games`, `stats`, `server-key`. No dependencies |
 | Integrations | `integrations/`, `.claude-plugin/` | Claude Code plugin (MCP server, skill, `/rg-publish`), Codex config and `AGENTS.md`, Grok remote-MCP setup and script |
+| FaultyParty | `games/faultyparty/` | A first-party hosted game kept in this repo: Vite + React, static build, deployed with `npm run deploy` there. See its README |
 | Docs | `docs/SDK.md` | One source for `/docs`, the `get_sdk_docs` tool and the agent skills |
 
 Games are either **hosted** (static files uploaded to R2, served from `GAMES_HOST`) or **linked** (the game runs on its own site, like unsays on unsays.com or a Vercel app, and the portal frames its URL).

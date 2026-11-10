@@ -1,6 +1,6 @@
 import { getGame, getPlayer, publicPlayer, avatarFor, gameView, monthKey, monthLabel, levelFor, safeJSON, coverSrc } from './db.js';
 import { sessionPlayer, providers, safeNext, setCookie } from './auth.js';
-import { getShare, isBot, countShareClick, validVia, referralStats, gemHistory, GEMS, linkGems, VIA_COOKIE, SHARE_COOKIE, VIA_DAYS, REFERRAL_PLAY_MS } from './growth.js';
+import { getShare, isBot, countShareClick, validVia, referralStats, gemHistory, GEMS, linkGems, VIA_COOKIE, SHARE_COOKIE, VIA_DAYS, REFERRAL_PLAY_MS, ROOM_RE } from './growth.js';
 import { frontPage, topScores, fame, sealIfDue } from './play.js';
 import { isDeveloper, myGames, listKeys, siteURL, getStudio, studioView, listStudios, STUDIO_SLUG_RE } from './dev.js';
 import { mintFor } from './api.js';
@@ -124,7 +124,7 @@ async function play(DB, req, env, url, slug) {
   const src = new URL(frame.src);
   if (ref) src.searchParams.set('rg_ref', ref);
   // A multiplayer invite: the game reads the room with rg.invite.room().
-  const room = /^[A-Za-z0-9_-]{1,40}$/.test(url.searchParams.get('room') || '') ? url.searchParams.get('room') : null;
+  const room = ROOM_RE.test(url.searchParams.get('room') || '') ? url.searchParams.get('room') : null;
   if (room) src.searchParams.set('rg_room', room);
   const [monthly, alltime, hall, others, studioRow] = await Promise.all([topScores(DB, g, monthKey(), 10), topScores(DB, g, 'all', 10), fame(DB, { game: g.slug, limit: 9 }), frontPage(DB), g.studio ? getStudio(DB, g.studio) : null]);
   const studio = studioView(studioRow);

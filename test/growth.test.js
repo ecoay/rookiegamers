@@ -70,6 +70,11 @@ test('share links credit signed-in players and fall back to the game link for gu
   assert.equal(guest.credited, false);
   const odd = await createShare(DB, 'https://rg.test', g, sam, { room: '<script>' });
   assert.equal((await DB.prepare('SELECT room FROM shares WHERE id = ?').bind(odd.id).first()).room, null);
+  // A whole FaultyParty party fits in a room; anything past 120 is dropped.
+  const party = 'lifeboat-1-k3f9xq-' + Array.from({ length: 5 }, (_, i) => 'a'.repeat(14) + i).join('-') + '-by-' + 'b'.repeat(15);
+  assert.ok(party.length > 40 && party.length <= 120);
+  assert.equal((await createShare(DB, 'https://rg.test', g, null, { room: party })).url, 'https://rg.test/play/dodge?room=' + party);
+  assert.equal((await createShare(DB, 'https://rg.test', g, null, { room: 'x'.repeat(121) })).url, 'https://rg.test/play/dodge');
 });
 
 test('publishing blocks builds with their own sign-in', async () => {

@@ -1,0 +1,268 @@
+{
+  "bodyCrown": [
+    128,
+    60
+  ],
+  "items": {
+    "1": {
+      "name": "tuft",
+      "file": "characters/chr_hat_01.png",
+      "pivot": [
+        96,
+        155
+      ],
+      "scale": 1,
+      "bodyAnchor": [
+        128,
+        60
+      ]
+    },
+    "2": {
+      "name": "beanie",
+      "file": "characters/chr_hat_02.png",
+      "pivot": [
+        96,
+        155
+      ],
+      "scale": 1,
+      "bodyAnchor": [
+        128,
+        60
+      ]
+    },
+    "3": {
+      "name": "cap",
+      "file": "characters/chr_hat_03.png",
+      "pivot": [
+        96,
+        155
+      ],
+      "scale": 1,
+      "bodyAnchor": [
+        128,
+        60
+      ]
+    },
+    "4": {
+      "name": "crown",
+      "file": "characters/chr_hat_04.png",
+      "pivot": [
+        96,
+        155
+      ],
+      "scale": 1,
+      "bodyAnchor": [
+        128,
+        60
+      ]
+    },
+    "5": {
+      "name": "bucket-hat",
+      "file": "characters/chr_hat_05.png",
+      "pivot": [
+        96,
+        155
+      ],
+      "scale": 1,
+      "bodyAnchor": [
+        128,
+        60
+      ]
+    },
+    "6": {
+      "name": "headset",
+      "file": "characters/chr_hat_06.png",
+      "pivot": [
+        96,
+        53
+      ],
+      "scale": 1.15,
+      "bodyAnchor": [
+        128,
+        60
+      ]
+    },
+    "7": {
+      "name": "top-knot",
+      "file": "characters/chr_hat_07.png",
+      "pivot": [
+        96,
+        154
+      ],
+      "scale": 1,
+      "bodyAnchor": [
+        128,
+        60
+      ]
+    },
+    "8": {
+      "name": "mohawk",
+      "file": "characters/chr_hat_08.png",
+      "pivot": [
+        96,
+        107
+      ],
+      "scale": 1,
+      "bodyAnchor": [
+        128,
+        60
+      ]
+    },
+    "9": {
+      "name": "ponytail",
+      "file": "characters/chr_hat_09.png",
+      "pivot": [
+        96,
+        155
+      ],
+      "scale": 1,
+      "bodyAnchor": [
+        128,
+        60
+      ]
+    },
+    "10": {
+      "name": "messy",
+      "file": "characters/chr_hat_10.png",
+      "pivot": [
+        96,
+        110
+      ],
+      "scale": 1,
+      "bodyAnchor": [
+        128,
+        60
+      ]
+    },
+    "11": {
+      "name": "comb-over",
+      "file": "characters/chr_hat_11.png",
+      "pivot": [
+        96,
+        101
+      ],
+      "scale": 1,
+      "bodyAnchor": [
+        128,
+        60
+      ]
+    },
+    "12": {
+      "name": "bald-fringe",
+      "file": "characters/chr_hat_12.png",
+      "pivot": [
+        96,
+        46
+      ],
+      "scale": 1,
+      "bodyAnchor": [
+        128,
+        60
+      ]
+    },
+    "13": {
+      "name": "tinfoil-hat",
+      "file": "characters/chr_hat_13.png",
+      "pivot": [
+        96,
+        154
+      ],
+      "scale": 1,
+      "bodyAnchor": [
+        128,
+        60
+      ]
+    },
+    "14": {
+      "name": "visor",
+      "file": "characters/chr_hat_14.png",
+      "pivot": [
+        96,
+        155
+      ],
+      "scale": 1,
+      "bodyAnchor": [
+        128,
+        60
+      ]
+    },
+    "15": {
+      "name": "pompadour",
+      "file": "characters/chr_hat_15.png",
+      "pivot": [
+        96,
+        100
+      ],
+      "scale": 1,
+      "bodyAnchor": [
+        128,
+        60
+      ]
+    },
+    "16": {
+      "name": "bob",
+      "file": "characters/chr_hat_16.png",
+      "pivot": [
+        96,
+        93
+      ],
+      "scale": 1,
+      "bodyAnchor": [
+        128,
+        60
+      ]
+    },
+    "17": {
+      "name": "pigtails",
+      "file": "characters/chr_hat_17.png",
+      "pivot": [
+        96,
+        97
+      ],
+      "scale": 1,
+      "bodyAnchor": [
+        128,
+        60
+      ]
+    },
+    "18": {
+      "name": "wizard-hat",
+      "file": "characters/chr_hat_18.png",
+      "pivot": [
+        96,
+        155
+      ],
+      "scale": 1,
+      "bodyAnchor": [
+        128,
+        60
+      ]
+    },
+    "19": {
+      "name": "beret",
+      "file": "characters/chr_hat_19.png",
+      "pivot": [
+        96,
+        155
+      ],
+      "scale": 1,
+      "bodyAnchor": [
+        128,
+        60
+      ]
+    },
+    "20": {
+      "name": "propeller-cap",
+      "file": "characters/chr_hat_20.png",
+      "pivot": [
+        96,
+        155
+      ],
+      "scale": 1,
+      "bodyAnchor": [
+        128,
+        60
+      ]
+    }
+  }
+}

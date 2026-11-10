@@ -47,6 +47,10 @@ const SCHEMA = [
     live INTEGER NOT NULL DEFAULT 1, owner_id TEXT, version TEXT, coin INTEGER NOT NULL DEFAULT 0, payout_wallet TEXT, released_at INTEGER NOT NULL, created_at INTEGER NOT NULL)`,
   `CREATE INDEX IF NOT EXISTS games_owner ON games(owner_id)`,
   // Developers publish games. Becoming one takes an invite code (or OPEN_DEVELOPERS=1).
+  // Game studios: a name, logo, website and about text, shown on /studio/<slug> and on each of
+  // their games' pages. A developer owns the studios they make; admins can edit any of them.
+  `CREATE TABLE IF NOT EXISTS studios (slug TEXT PRIMARY KEY, name TEXT NOT NULL, owner_id TEXT, logo TEXT, url TEXT, bio TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL)`,
+  `CREATE INDEX IF NOT EXISTS studios_owner ON studios(owner_id)`,
   `CREATE TABLE IF NOT EXISTS developers (player_id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at INTEGER NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS dev_invites (code TEXT PRIMARY KEY, note TEXT, used_by TEXT, created_at INTEGER NOT NULL)`,
   // API keys for the developer API, the CLI and the MCP server. Only the hash is stored.
@@ -104,6 +108,8 @@ const COLUMNS = [
   'ALTER TABLE games ADD COLUMN review_version TEXT',
   'ALTER TABLE games ADD COLUMN review_note TEXT',
   'ALTER TABLE games ADD COLUMN review_at INTEGER',
+  // The game studio a game is credited to (studios.slug). Null shows only the developer name.
+  'ALTER TABLE games ADD COLUMN studio TEXT',
 ];
 
 export async function migrate(DB) {
@@ -182,7 +188,7 @@ export function gameView(g) {
   return {
     slug: g.slug, title: g.title, kind: g.kind, url: g.url, origins: safeJSON(g.origins, []), developer: g.developer, blurb: g.blurb,
     tags: safeJSON(g.tags, []), cover: g.cover, color: g.color, devices: g.devices, multiplayer: !!g.multiplayer,
-    scoreLabel: g.score_label, scoreMode: g.score_mode, scoreOrder: g.score_order, coin: !!g.coin, wallet: g.wallet || (g.coin ? 'optional' : 'none'), featured: !!g.featured_at, releasedAt: g.released_at,
+    studio: g.studio || null, scoreLabel: g.score_label, scoreMode: g.score_mode, scoreOrder: g.score_order, coin: !!g.coin, wallet: g.wallet || (g.coin ? 'optional' : 'none'), featured: !!g.featured_at, releasedAt: g.released_at,
   };
 }
 

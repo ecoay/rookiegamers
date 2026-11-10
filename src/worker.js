@@ -99,9 +99,10 @@ async function handle(req, env, ctx) {
     if (path === '/auth/email') return await emailVerify(DB, req);
     if (path === '/admin') return await adminPage(DB, env, req);
     let m;
-    // Uploaded cover art (src/dev.js putCover). Names are unique per upload, so they cache forever.
-    if ((m = path.match(/^\/covers\/([a-z0-9-]{1,32})\/([a-z0-9]{12}\.(?:png|jpg|webp|gif|avif))$/))) {
-      const obj = env.GAMES && await env.GAMES.get(`_covers/${m[1]}/${m[2]}`);
+    // Uploaded cover art and studio logos (src/dev.js). Names are unique per upload, so they cache forever.
+    if ((m = path.match(/^\/(covers|logos)\/([a-z0-9-]{1,32})\/([a-z0-9]{12}\.(?:png|jpg|webp|gif|avif))$/))) {
+      m = [m[0], m[2], m[3], m[1]];
+      const obj = env.GAMES && await env.GAMES.get(`_${m[3]}/${m[1]}/${m[2]}`);
       if (!obj) return new Response('Not found', { status: 404 });
       return new Response(obj.body, { headers: { 'content-type': obj.httpMetadata?.contentType || contentType(m[2]), 'cache-control': 'public, max-age=31536000, immutable', 'x-content-type-options': 'nosniff' } });
     }

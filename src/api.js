@@ -314,6 +314,14 @@ export async function apiDev(req, env, DB, url, { admin = false } = {}) {
     if ((m = path.match(/^\/games\/([a-z0-9-]{1,32})\/unpublish$/)) && method === 'POST') return json(await dev.unpublish(DB, pid, m[1], admin));
     if ((m = path.match(/^\/games\/([a-z0-9-]{1,32})\/server-key$/)) && method === 'POST') return json({ key: await dev.rotateServerKey(DB, pid, m[1], admin) });
     if ((m = path.match(/^\/games\/([a-z0-9-]{1,32})\/stats$/)) && method === 'GET') return json(await dev.stats(DB, pid, m[1], admin));
+    // Game studios: a name, logo, website and about text that games are credited to.
+    if (path === '/studios' && method === 'GET') return json({ studios: await dev.listStudios(DB, pid, admin) });
+    if (path === '/studios' && method === 'POST') return json({ studio: await dev.saveStudio(DB, pid, await readJSON(req), admin) });
+    if ((m = path.match(/^\/studios\/([a-z0-9-]{1,32})$/)) && method === 'DELETE') return json(await dev.deleteStudio(DB, pid, m[1], admin));
+    if ((m = path.match(/^\/studios\/([a-z0-9-]{1,32})\/logo$/)) && method === 'PUT') {
+      const body = await req.arrayBuffer();
+      return json(await dev.putStudioLogo(DB, env, pid, m[1], body, req.headers.get('content-type'), body.byteLength, admin));
+    }
 
     if (admin) {
       // The first-game review queue: GET lists what's waiting, POST approves or rejects one.

@@ -2,11 +2,12 @@ import { getGame, getPlayer, publicPlayer, avatarFor, gameView, monthKey, monthL
 import { sessionPlayer, providers, safeNext, setCookie } from './auth.js';
 import { getShare, isBot, countShareClick, validVia, referralStats, gemHistory, GEMS, linkGems, VIA_COOKIE, SHARE_COOKIE, VIA_DAYS, REFERRAL_PLAY_MS } from './growth.js';
 import { frontPage, topScores, fame, sealIfDue } from './play.js';
-import { isDeveloper, myGames, listKeys, siteURL } from './dev.js';
+import { isDeveloper, myGames, listKeys, siteURL, getStudio, studioView, listStudios, STUDIO_SLUG_RE } from './dev.js';
 import { mintFor } from './api.js';
 import { devMoneySection } from './money-api.js';
 import SDK_DOCS from '../docs/SDK.md';
 import { homePage } from './home.js';
+import { ADMIN_CSS, helpersJS, STUDIO_JS, studiosSection } from './admin.js';
 import { canonical, ldJSON } from './seo/site.js';
 import { SHOWN, EARN, iconURI, ownedIcons, claimEarned, canPick, PLAY_GEMS } from './icons.js';
 import { FRAMES, FRAME_EARN, ownedFrames, claimFrames, progress, MILESTONES, hallTrophies } from './frames.js';
@@ -58,6 +59,8 @@ function art(g) {
   const cover = coverSrc(g);
   return `<div class="art" style="background:${cover ? `url('${esc(cover)}') center/cover,` : ''}linear-gradient(135deg,${color},#191626)">${cover ? '' : initial(g.title)}</div>`;
 }
+// A studio's logo, or its initial on a tile when it has no logo yet.
+const studioLogo = (s, cls = 'slogo') => s.logo ? `<img class="${cls}" src="${esc(s.logo)}" alt="">` : `<span class="${cls} none">${initial(s.name)}</span>`;
 function card(g) {
   const mins = Math.round((g.stats?.perPlayer || 0) / 60000);
   return `<a class="card" href="/play/${esc(g.slug)}">${g.isNew ? '<span class="pill">New</span>' : ''}${g.multiplayer ? '<span class="pill alt">Multiplayer</span>' : ''}
@@ -121,11 +124,12 @@ async function play(DB, req, env, url, slug) {
   // A multiplayer invite: the game reads the room with rg.invite.room().
   const room = /^[A-Za-z0-9_-]{1,40}$/.test(url.searchParams.get('room') || '') ? url.searchParams.get('room') : null;
   if (room) src.searchParams.set('rg_room', room);
-  const [monthly, alltime, hall, others] = await Promise.all([topScores(DB, g, monthKey(), 10), topScores(DB, g, 'all', 10), fame(DB, { game: g.slug, limit: 9 }), frontPage(DB)]);
+  const [monthly, alltime, hall, others, studioRow] = await Promise.all([topScores(DB, g, monthKey(), 10), topScores(DB, g, 'all', 10), fame(DB, { game: g.slug, limit: 9 }), frontPage(DB), g.studio ? getStudio(DB, g.studio) : null]);
+  const studio = studioView(studioRow);
   const more = others.filter(o => o.slug !== g.slug).slice(0, 4);
   const v = gameView(g);
   const body = `<div class="play"><div><div class="stage"><div class="gload" id="gameLoading" style="--c:${esc(g.color || '#8f6bff')}">${coverSrc(g) ? `<img src="${esc(coverSrc(g))}" alt="">` : ''}<div class="gl-in"><span class="spin" aria-hidden="true"></span><b>Loading ${esc(g.title)}...</b><span class="muted small gl-slow" hidden>Taking a while? <a href="${esc(src.href)}" target="_blank" rel="noopener">Open the game on its own</a></span></div></div><iframe id="game" onload="this.dataset.loaded=1" src="${esc(src.href)}" title="${esc(g.title)}" sandbox="${frame.sandbox}" allow="autoplay; fullscreen; gamepad; clipboard-write; screen-wake-lock" allowfullscreen></iframe></div>
-<div class="stagebar"><div><h1>${esc(g.title)}</h1><span class="muted">by ${esc(g.developer)}</span></div><div class="acts"><button class="btn ghost small" id="soundBtn" type="button" aria-pressed="false" title="Mute or unmute the game">Sound on</button><button class="btn small" id="shareBtn" type="button">Share</button><button class="btn ghost small" id="fs" type="button">Full screen</button></div></div>
+<div class="stagebar"><div><h1>${esc(g.title)}</h1>${studio ? `<a class="studio-by" href="/studio/${esc(studio.slug)}">${studioLogo(studio)}<span>${esc(studio.name)}</span></a>` : `<span class="muted">by ${esc(g.developer)}</span>`}</div><div class="acts"><button class="btn ghost small" id="soundBtn" type="button" aria-pressed="false" title="Mute or unmute the game">Sound on</button><button class="btn small" id="shareBtn" type="button">Share</button><button class="btn ghost small" id="fs" type="button">Full screen</button></div></div>
 <p class="muted">${esc(g.blurb)}</p></div>
 <aside class="side"><div class="panel"><h3><span>${esc(g.score_label)}</span><span class="tabs"><button type="button" data-b="m" aria-pressed="true">${esc(monthLabel(monthKey()))}</button><button type="button" data-b="a" aria-pressed="false">All time</button></span></h3>
 <div id="bm">${boardList(monthly, g.score_label)}</div><div id="ba" hidden>${boardList(alltime, g.score_label)}</div></div>
@@ -138,7 +142,7 @@ ${shareDialog(me)}`;
   const boot = { game: v.slug, title: v.title, origins: frame.origins, ref, signedIn: !!me };
   const desc = playDescription(g);
   return html(layout({ title: `Play ${g.title} free online`, desc, me, active: '/play/' + g.slug, body, url: siteURL(env) + '/play/' + g.slug,
-    canonicalPath: '/play/' + g.slug, jsonld: playJSONLD(env, g, desc),
+    canonicalPath: '/play/' + g.slug, jsonld: playJSONLD(env, g, desc, studio),
     og: { title: `Play ${g.title} free on RookieGamers`, image: gameImage(env, g), alt: `${g.title} on RookieGamers` },
     scripts: `<script>window.RG_PLAY=${data(boot)}</script><script src="/portal.js"></script>` }));
 }
@@ -165,6 +169,20 @@ async function sharePage(DB, req, env, id) {
     scripts: `<script>location.replace(${data(to)})</script>` }));
   for (const c of cookies) res.headers.append('set-cookie', c);
   return res;
+}
+
+// /studio/<slug>: a game studio's page, with its logo, about text, website and live games.
+async function studioPage(DB, req, env, slug) {
+  const [row, me] = await Promise.all([getStudio(DB, slug), viewer(DB, req)]);
+  if (!row) return notFound(me, 'No studio here.');
+  const s = studioView(row);
+  const games = (await frontPage(DB)).filter(g => g.studio === s.slug);
+  const page = siteURL(env) + '/studio/' + s.slug;
+  const desc = s.bio || `Free web games by ${s.name}, playable in your browser on RookieGamers.`;
+  const body = `<div class="studio-head">${studioLogo(s, 'slogo big')}<div><h1>${esc(s.name)}</h1>${s.bio ? `<p class="lede">${esc(s.bio)}</p>` : ''}${s.url ? `<p><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.url.replace(/^https:\/\//, '').replace(/\/$/, ''))}</a></p>` : ''}</div></div>
+<h2>Games</h2>${games.length ? `<div class="shelf">${games.map(card).join('')}</div>` : '<p class="muted">No live games yet.</p>'}`;
+  const jsonld = [{ '@context': 'https://schema.org', '@type': 'Organization', name: s.name, url: page, ...(s.logo ? { logo: s.logo } : {}), ...(s.url ? { sameAs: [s.url] } : {}), ...(s.bio ? { description: s.bio } : {}) }];
+  return html(layout({ title: `${s.name} games`, desc, me, body, url: page, canonicalPath: '/studio/' + s.slug, jsonld, og: { title: `${s.name} on RookieGamers`, ...(s.logo ? { image: s.logo, alt: s.name } : {}) } }));
 }
 
 async function hallOfFame(DB, req, env) {
@@ -395,16 +413,20 @@ node rg.mjs deploy ./my-game --game my-game</code></pre></div></div>`;
 <form class="form" id="joinForm">${open ? '' : `<input name="invite" value="${esc(invite)}" placeholder="inv_..." aria-label="Invite code" required>`}<button class="btn" type="submit">Become a developer</button><div id="joinMsg"></div></form>${agents}`;
     return html(layout({ title: 'Publish', desc: 'Publish your web game on RookieGamers: get a developer key, add the SDK, and ship with the MCP server, Claude Code, Codex, the xAI API or the command-line tool.', me, active: '/dev', body, canonicalPath: '/dev', jsonld: DEV_JSONLD, scripts: `<script>document.getElementById('joinForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);const r=await fetch('/api/dev/join',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({invite:f.get('invite')})});const j=await r.json();if(r.ok)location.href='/dev';else{const m=document.getElementById('joinMsg');m.innerHTML='<div class="note err"></div>';m.firstChild.textContent=j.error}}</script>` }));
   }
-  const [games, keys] = await Promise.all([myGames(DB, me.id), listKeys(DB, me.id)]);
+  const [games, keys, studios] = await Promise.all([myGames(DB, me.id), listKeys(DB, me.id), listStudios(DB, me.id)]);
   const cash = await devMoneySection(DB, env, me.id, games);
   const body = `<h1>Developer</h1><p class="lede">Make an API key, connect your AI or the CLI, and publish. We play your first game before it goes live. After that, your games and updates go live as soon as they pass the checks.</p>
 ${String(env.ADMIN_PLAYERS || '').split(',').map(s => s.trim()).includes(me.id) ? '<p><a class="btn ghost small" href="/admin">Admin: edit every game, review queue, invites</a></p>' : ''}
-<h2>Your games</h2>${games.length ? `<table class="t"><tr><th>Game</th><th>Kind</th><th>Status</th><th>Version</th></tr>${games.map(g => `<tr><td>${g.live ? `<a href="/play/${esc(g.slug)}">${esc(g.title)}</a>` : esc(g.title)}</td><td>${esc(g.kind)}</td><td>${g.status === 'live' ? 'Live' : g.status === 'pending' ? 'Waiting for review' : g.status === 'rejected' ? `Not approved: ${esc(g.review.note || '')}` : 'Not published'}</td><td>${esc(g.version || '-')}</td></tr>`).join('')}</table>` : '<p class="muted">No games yet. Create one with your agent, the CLI, or the API.</p>'}
+<h2>Your games</h2>${games.length ? `<table class="t"><tr><th>Game</th><th>Kind</th><th>Status</th><th>Version</th><th>Studio</th></tr>${games.map(g => `<tr><td>${g.live ? `<a href="/play/${esc(g.slug)}">${esc(g.title)}</a>` : esc(g.title)}</td><td>${esc(g.kind)}</td><td>${g.status === 'live' ? 'Live' : g.status === 'pending' ? 'Waiting for review' : g.status === 'rejected' ? `Not approved: ${esc(g.review.note || '')}` : 'Not published'}</td><td>${esc(g.version || '-')}</td><td><select data-studio-for="${esc(g.slug)}" aria-label="Studio for ${esc(g.title)}"><option value="">None</option>${studios.map(st => `<option value="${esc(st.slug)}"${g.studio === st.slug ? ' selected' : ''}>${esc(st.name)}</option>`).join('')}</select></td></tr>`).join('')}</table>` : '<p class="muted">No games yet. Create one with your agent, the CLI, or the API.</p>'}
+<h2>Your game studio</h2>${studiosSection(studios, 'Add your studio\'s name, logo, website and about text, then pick it on your games above. Game pages show the studio logo and link to its studio page.')}
 <h2>API keys</h2><form class="form" id="keyForm" style="flex-direction:row;max-width:520px"><input name="label" placeholder="Key name, like laptop or claude" aria-label="Key name"><button class="btn" type="submit">Make key</button></form><div id="keyMsg" style="margin:10px 0"></div>
 ${keys.length ? `<table class="t"><tr><th>Name</th><th>Key</th><th>Last used</th><th></th></tr>${keys.map(k => `<tr><td>${esc(k.label)}</td><td><code>${esc(k.prefix)}...</code></td><td>${k.used_at ? new Date(k.used_at).toISOString().slice(0, 10) : 'never'}</td><td><button class="btn ghost small" data-del="${esc(k.prefix)}" type="button">Delete</button></td></tr>`).join('')}</table>` : ''}
 ${cash.body}
 ${agents}<h2>Docs</h2><p><a href="/docs">The SDK and developer API reference</a>.</p>`;
-  const script = cash.script + `<script>
+  const script = cash.script + ADMIN_CSS + `<script src="/crop.js"></script><script>
+${helpersJS('/api/dev')}
+${STUDIO_JS}
+document.querySelectorAll('[data-studio-for]').forEach(sel=>sel.onchange=async()=>{try{await api('PATCH','/games/'+sel.dataset.studioFor,{studio:sel.value||null})}catch(err){alert(err.message)}});
 document.getElementById('keyForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);const r=await fetch('/api/dev/keys',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({label:f.get('label')})});const j=await r.json();const m=document.getElementById('keyMsg');
 m.innerHTML=r.ok?'<div class="note ok">Your new key (shown once, keep it secret): <code id="newKey"></code></div>':'<div class="note err"></div>';if(r.ok)document.getElementById('newKey').textContent=j.key;else m.firstChild.textContent=j.error};
 document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{await fetch('/api/dev/keys',{method:'DELETE',headers:{'content-type':'application/json'},body:JSON.stringify({prefix:b.dataset.del})});location.reload()});
@@ -533,6 +555,7 @@ async function route(path, url, env, DB, req) {
   if (path === '/') return home(DB, req, env);
   if ((m = path.match(/^\/s\/(s[a-f0-9]{12})$/))) return sharePage(DB, req, env, m[1]);
   if ((m = path.match(/^\/play\/([a-z0-9-]{1,32})\/?$/))) return play(DB, req, env, url, m[1]);
+  if ((m = path.match(/^\/studio\/([a-z0-9-]{1,32})\/?$/)) && STUDIO_SLUG_RE.test(m[1])) return studioPage(DB, req, env, m[1]);
   if (path === '/hall-of-fame') return hallOfFame(DB, req, env);
   if (path === '/shop') return shopPage(DB, req, env);
   if ((m = path.match(/^\/u\/(p[a-f0-9]{20})$/))) return profilePage(DB, req, env, m[1]);

@@ -71,7 +71,9 @@ curl -X POST https://rookiegamers.com/api/admin/games/unsays/server-key -H "auth
 
 ### The admin page
 
-`/admin` on the site does everything below without commands: edit any game (title, blurb, tags, URL, cover upload, color, featured), publish or take down games, approve or reject first games, and make developer invites. It opens for the signed-in players listed in `ADMIN_PLAYERS` (comma-separated player ids, the `p...` part of `/u/p...`), set like the other secrets: `npx wrangler secret put ADMIN_PLAYERS`. The commands below still work with `ADMIN_TOKEN`.
+`/admin` on the site does everything below without commands: edit any game (title, blurb, tags, URL, cover upload with a crop tool, color, studio, featured), make and edit game studios (name, logo, website, about), publish or take down games, approve or reject first games, and make developer invites. It opens for the signed-in players listed in `ADMIN_PLAYERS` (comma-separated player ids, the `p...` part of `/u/p...`), set like the other secrets: `npx wrangler secret put ADMIN_PLAYERS`. The commands below still work with `ADMIN_TOKEN`.
+
+Game studios: developers make theirs on `/dev`, and each studio gets a page at `/studio/<slug>`. The developer API has `GET /api/dev/studios`, `POST /api/dev/studios` (`{slug, name, url, bio}` creates or updates), `PUT /api/dev/studios/<slug>/logo` (raw image body), `DELETE /api/dev/studios/<slug>`, and `studio` on `PATCH /api/dev/games/<slug>`. The same routes are under `/api/admin` for any studio.
 
 ### Game review
 

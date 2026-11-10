@@ -115,7 +115,7 @@ export function gameListJSONLD(games) {
 // RookieGamers ad space yet (true today: the portal only runs its own sponsor and house ads).
 export function adsTxt(env) {
   const lines = ['# ads.txt for rookiegamers.com', `OWNERDOMAIN=rookiegamers.com`, 'contact=support@rookiegamers.com'];
-  const pub = String(env.ADSENSE_CLIENT || '').trim().match(/^(?:ca-)?(pub-\d{6,24})$/);
+  const pub = String(env.ADSENSE_CLIENT || 'ca-pub-8081136929405133').trim().match(/^(?:ca-)?(pub-\d{6,24})$/);
   const sellers = [];
   if (pub) sellers.push(`google.com, ${pub[1]}, DIRECT, f08c47fec0942fa0`);
   for (const raw of String(env.ADS_TXT || '').split(/\r?\n|\\n/)) {

@@ -212,7 +212,7 @@ test('/llms.txt and /llms-full.txt are text/plain, built from the fixtures with 
 
 /* ---------- ads.txt, from settings entered in Cloudflare; MCP must keep working ---------- */
 
-test('/ads.txt with nothing set lists no sellers, but names the owner and a contact', async () => {
+test('/ads.txt with nothing set lists the RookieGamers AdSense account, the owner and a contact', async () => {
   const env = await setup();
   const res = await get(env, '/ads.txt');
   assert.equal(res.status, 200);
@@ -220,7 +220,8 @@ test('/ads.txt with nothing set lists no sellers, but names the owner and a cont
   const t = await res.text();
   assert.match(t, /^OWNERDOMAIN=rookiegamers\.com$/m);
   assert.match(t, /^contact=support@rookiegamers\.com$/m);
-  assert.doesNotMatch(t, /DIRECT|RESELLER/);
+  assert.match(t, /^google\.com, pub-8081136929405133, DIRECT, f08c47fec0942fa0$/m);
+  assert.doesNotMatch(t, /RESELLER/);
 });
 
 test('/ads.txt adds Google from ADSENSE_CLIENT and other seller lines from ADS_TXT', async () => {
@@ -235,6 +236,32 @@ test('/ads.txt adds Google from ADSENSE_CLIENT and other seller lines from ADS_T
   // An Cloudflare text variable may arrive with literal \n separators.
   assert.match(adsTxt({ ADS_TXT: 'a.com, 1, DIRECT\\nb.com, 2, RESELLER' }), /^a\.com, 1, DIRECT\nb\.com, 2, RESELLER$/m);
   assert.doesNotMatch(adsTxt({ ADSENSE_CLIENT: 'not-a-pub' }), /google\.com/);
+});
+
+test('home and /privacy heads include the google-adsense-account meta', async () => {
+  const env = await setup();
+  const meta = /<meta name="google-adsense-account" content="ca-pub-8081136929405133">/;
+  assert.match(await (await get(env, '/')).text(), meta);
+  assert.match(await (await get(env, '/privacy')).text(), meta);
+  assert.match(await (await get(env, '/about')).text(), meta);
+});
+
+test('home and a pages.js page include google-site-verification', async () => {
+  const env = await setup();
+  const meta = /<meta name="google-site-verification" content="OSHWSdXxLLrQTk12-QAup0nc3IHfnccGLamcxk2hDng">/;
+  assert.match(await (await get(env, '/')).text(), meta);
+  assert.match(await (await get(env, '/privacy')).text(), meta);
+  assert.match(await (await get(env, '/about')).text(), meta);
+});
+
+test('/privacy discloses advertising cookies with Google opt-out links', async () => {
+  const env = await setup();
+  const html = await (await get(env, '/privacy')).text();
+  assert.match(html, /Advertising/);
+  assert.match(html, /href="https:\/\/www\.google\.com\/settings\/ads"/);
+  assert.match(html, /href="https:\/\/www\.aboutads\.info\/choices\/"/);
+  assert.match(html, /href="https:\/\/policies\.google\.com\/technologies\/partner-sites"/);
+  assert.doesNotMatch(html, /consent (banner|management|CMP)|we (show|display) a consent/i);
 });
 
 test('/mcp still answers initialize and tools/list, unaffected by the SEO routes', async () => {

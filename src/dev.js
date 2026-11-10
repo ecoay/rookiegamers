@@ -338,7 +338,8 @@ export async function publish(DB, env, pid, slug, version, admin = false) {
     check = await checkBuild(env, g.slug, version);
     if (!check.ok) return { live: false, ...check };
   } else version = undefined;
-  if (!admin && !g.live && !await isTrusted(DB, g.owner_id)) {
+  // Staging (env.STAGING) is for testing, so nothing waits for review there.
+  if (!admin && !g.live && env.STAGING !== '1' && !await isTrusted(DB, g.owner_id)) {
     await DB.prepare("UPDATE games SET review = 'pending', review_version = ?, review_note = NULL, review_at = ? WHERE slug = ?").bind(version || null, now(), g.slug).run();
     return { live: false, pending: true, ...(version ? { version } : {}), ...check, message: REVIEW_MESSAGE };
   }

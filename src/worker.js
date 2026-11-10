@@ -58,6 +58,17 @@ function keepOffSearch(res) {
   return out;
 }
 
+// Staging (STAGING=1 in wrangler.jsonc env.staging) is a separate copy of the site with its own
+// database and storage, for developers testing games from localhost. Every page says so.
+const STAGING_BAR = '<div style="position:sticky;top:0;z-index:9999;background:#f5b82e;color:#14110a;font:600 14px system-ui,sans-serif;text-align:center;padding:6px 12px">Staging: test data only, separate from rookiegamers.com, and it may be wiped at any time. <a href="/docs#staging" style="color:inherit">How to test here</a></div>';
+async function stagingBanner(res) {
+  if (!(res.headers.get('content-type') || '').startsWith('text/html')) return res;
+  const html = (await res.text()).replace(/<body[^>]*>/, m => m + STAGING_BAR);
+  const out = new Response(html, res);
+  out.headers.delete('content-length');
+  return out;
+}
+
 async function handle(req, env, ctx) {
   const url = new URL(req.url);
   const path = url.pathname;
@@ -147,7 +158,8 @@ async function handle(req, env, ctx) {
 
 export default {
   async fetch(req, env, ctx) {
-    const res = await handle(req, env, ctx);
+    let res = await handle(req, env, ctx);
+    if (env.STAGING === '1') res = await stagingBanner(res);
     const host = new URL(req.url).hostname;
     if (INDEXED_HOSTS.has(host) || (env.GAMES_HOST && host === env.GAMES_HOST)) return res;
     return keepOffSearch(res);

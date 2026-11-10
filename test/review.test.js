@@ -289,3 +289,28 @@ test('the admin and developer pages show the studio forms, and their scripts par
   }
   new Script((await import('node:fs')).readFileSync(new URL('../public/crop.js', import.meta.url), 'utf8'));
 });
+
+test('staging: a banner on every page, no review wait, and localhost sign-in', async () => {
+  const { DB, env, newDev, upload } = await setup();
+  Object.assign(env, { STAGING: '1', DEV_LOGIN: '1' });
+  const page = await (await worker.fetch(new Request('https://rg.test/'), env, {})).text();
+  assert.match(page, /Staging: test data only/);
+  const api = await worker.fetch(new Request('https://rg.test/api/v1/games'), env, {});
+  assert.doesNotMatch(await api.text(), /Staging/); // JSON is left alone
+
+  const pid = await newDev('stagey');
+  await dev.createGame(DB, pid, { slug: 'local-game', title: 'Local Game', kind: 'linked', url: 'http://localhost:5173/' });
+  const r = await dev.publish(DB, env, pid, 'local-game');
+  assert.equal(r.live, true); // a first game goes live on staging without review
+
+  const connect = await worker.fetch(new Request('https://rg.test/sdk/connect?game=local-game&origin=' + encodeURIComponent('http://127.0.0.1:8080')), env, {});
+  assert.doesNotMatch(await connect.text(), /Can't sign in here/);
+
+  // Without STAGING, production is unchanged.
+  delete env.STAGING; delete env.DEV_LOGIN;
+  assert.doesNotMatch(await (await worker.fetch(new Request('https://rg.test/'), env, {})).text(), /Staging: test data only/);
+  const g2 = await dev.createGame(DB, pid, { slug: 'local-two', title: 'Local Two', kind: 'linked', url: 'http://localhost:5174/' });
+  assert.equal(g2.slug, 'local-two');
+  const prod = await worker.fetch(new Request('https://rg.test/sdk/connect?game=local-game&origin=' + encodeURIComponent('http://127.0.0.1:8080')), env, {});
+  assert.match(await prod.text(), /Can't sign in here/);
+});

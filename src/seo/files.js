@@ -4,31 +4,15 @@
 export const ROBOTS_TXT = `User-agent: *
 Allow: /
 Disallow: /api/
+Disallow: /auth/
+Disallow: /sdk/connect
 
 Sitemap: https://rookiegamers.com/sitemap.xml
 `;
 
-export const ADS_TXT = 'google.com, pub-8081136929405133, DIRECT, f08c47fec0942fa0\n';
+// /sitemap.xml is built from D1 on each request: see seo/dynamic.js.
 
-export const SITEMAP_XML = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://rookiegamers.com/</loc></url>
-  <url><loc>https://rookiegamers.com/about</loc></url>
-  <url><loc>https://rookiegamers.com/creators</loc></url>
-  <url><loc>https://rookiegamers.com/ai</loc></url>
-  <url><loc>https://rookiegamers.com/faq</loc></url>
-  <url><loc>https://rookiegamers.com/dev</loc></url>
-  <url><loc>https://rookiegamers.com/docs</loc></url>
-  <url><loc>https://rookiegamers.com/hall-of-fame</loc></url>
-  <url><loc>https://rookiegamers.com/shop</loc></url>
-  <url><loc>https://rookiegamers.com/privacy</loc></url>
-  <url><loc>https://rookiegamers.com/terms</loc></url>
-  <url><loc>https://rookiegamers.com/data-deletion</loc></url>
-  <url><loc>https://rookiegamers.com/play/unsays</loc></url>
-  <url><loc>https://rookiegamers.com/play/buyyourfriends</loc></url>
-</urlset>
-`;
-
+// {{GAMES}} is replaced with the live games from D1 when the file is served.
 export const LLMS_TXT = `# RookieGamers
 
 > RookieGamers is a free web game portal for indie games. Games play in the browser with nothing to install, and every game is built to share one player account, one level and one Hall of Fame. Indie developers are welcome whether they use AI or not.
@@ -46,8 +30,7 @@ RookieGamers wants to be an integrated plugin for indie game makers, reachable o
 - [SDK docs](https://rookiegamers.com/docs): the SDK v1 reference (sign-in, scores, Hall of Fame, play-next cards)
 
 ## Play
-- [unsays](https://rookiegamers.com/play/unsays): everyone gets the same letters, writes a line for the topic, then everyone votes
-- [BuyYourFriends](https://rookiegamers.com/play/buyyourfriends): a RookieGamers original
+{{GAMES}}
 - [Hall of Fame](https://rookiegamers.com/hall-of-fame): each month's top 3 players in every game
 
 ## Optional
@@ -166,8 +149,7 @@ URL: https://rookiegamers.com/docs
 SDK v1 adds sign-in, monthly and all-time leaderboards, the Hall of Fame, gameplay events and play-next cards with one script tag. The RookieGamers account is the only sign-in, and games should not include outside ad code.
 
 # Games
-- unsays (https://rookiegamers.com/play/unsays), by ecoay: Things you can't unsay. Everyone gets the same letters, writes a line for the topic, then everyone votes.
-- BuyYourFriends (https://rookiegamers.com/play/buyyourfriends), by ecoay: a RookieGamers original.
+{{GAMES}}
 
 # Hall of Fame
 URL: https://rookiegamers.com/hall-of-fame

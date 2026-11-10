@@ -12,6 +12,7 @@ import { SHOWN, EARN, iconURI, ownedIcons, claimEarned, canPick, PLAY_GEMS } fro
 import { FRAMES, FRAME_EARN, ownedFrames, claimFrames, progress, MILESTONES, hallTrophies } from './frames.js';
 import { friendState, listFriends, incomingRequests, gameLevel } from './friends.js';
 import { FOOTER_LINKS, NEW_PAGES, DEV_JSONLD, DOCS_JSONLD, HALL_OF_FAME_JSONLD, PLAY_PAGES } from './seo/copy.js';
+import { gameImage, playJSONLD, DEFAULT_OG_IMAGE } from './seo/dynamic.js';
 
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const html = (body, status = 200, headers = {}) => new Response(body, { status, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', ...headers } });
@@ -33,8 +34,8 @@ function layout({ title, titleFull, desc, me, active, body, url, scripts = '', o
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(t)}</title><meta name="description" content="${esc(desc || 'Play free web games from indie developers, with one account, one level and one Hall of Fame across every game.')}"><meta name="google-adsense-account" content="ca-pub-8081136929405133"><meta name="google-site-verification" content="OSHWSdXxLLrQTk12-QAup0nc3IHfnccGLamcxk2hDng">
 ${robots ? `<meta name="robots" content="${esc(robots)}">` : ''}
-<meta property="og:site_name" content="RookieGamers"><meta property="og:title" content="${esc(ogTitle)}"><meta property="og:description" content="${esc(ogDesc)}"><meta property="og:type" content="website">
-${url ? `<meta property="og:url" content="${esc(url)}">` : ''}${canonicalPath ? `<link rel="canonical" href="${esc(canonical(canonicalPath))}">` : ''}${og.image ? `<meta property="og:image" content="${esc(og.image)}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="${esc(og.image)}">` : '<meta name="twitter:card" content="summary">'}
+<meta property="og:site_name" content="RookieGamers"><meta property="og:title" content="${esc(ogTitle)}"><meta property="og:description" content="${esc(ogDesc)}"><meta property="og:type" content="${esc(og.type || 'website')}"><meta property="og:locale" content="en_US">
+${canonicalPath ? `<meta property="og:url" content="${esc(canonical(canonicalPath))}">` : url ? `<meta property="og:url" content="${esc(url)}">` : ''}${canonicalPath ? `<link rel="canonical" href="${esc(canonical(canonicalPath))}">` : ''}<meta property="og:image" content="${esc(og.image || DEFAULT_OG_IMAGE)}"><meta property="og:image:alt" content="${esc(og.alt || ogTitle)}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="${esc(og.image || DEFAULT_OG_IMAGE)}"><meta name="twitter:image:alt" content="${esc(og.alt || ogTitle)}"><meta name="theme-color" content="#0f0d16">
 <meta name="twitter:title" content="${esc(ogTitle)}"><meta name="twitter:description" content="${esc(ogDesc)}">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/site.css">${(jsonld || []).map(block => `<script type="application/ld+json">${ldJSON(block)}</script>`).join('')}</head><body>
 <header class="top"><div class="wrap"><a class="logo" href="/"><b>RG</b>RookieGamers</a>
@@ -87,7 +88,6 @@ function frameFor(env, g, url) {
   return { src: `${url.origin}/hosted/${g.slug}/`, origins: ['null'], sandbox: 'allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms allow-pointer-lock' };
 }
 
-const coverURL = g => (g.cover && /^https:\/\//.test(g.cover) ? g.cover : null);
 
 // The share sheet on /play pages. portal.js fills in the link and opens it, for the Share button
 // and for rg.share() calls from the game.
@@ -97,6 +97,16 @@ function shareDialog(me) {
 <div class="copy"><input id="shareUrl" readonly aria-label="Share link"><button class="btn small" id="shareCopy" type="button">Copy</button></div>
 <p class="muted small">${me ? `Friends who sign up through your link and play for ${REFERRAL_PLAY_MS / 60000} minutes earn you ${GEMS.referrer} gems, and they get ${GEMS.friend}.` : 'Sign in first and your link earns you gems when friends join.'}</p>
 <div style="display:flex;justify-content:flex-end"><button class="btn ghost small" id="shareClose" type="button">Done</button></div></dialog>`;
+}
+
+// The meta description for /play/<slug>: hand-written copy if there is some, otherwise the blurb,
+// otherwise a plain sentence so the page never goes out without one.
+function playDescription(g) {
+  const seo = PLAY_PAGES[g.slug];
+  if (seo && seo.description) return seo.description;
+  const blurb = String(g.blurb || '').replace(/\s+/g, ' ').trim();
+  const base = blurb || `${g.title} is a free web game by ${g.developer}.`;
+  return /free/i.test(base) ? base : `${base} Play free in your browser on RookieGamers.`;
 }
 
 async function play(DB, req, env, url, slug) {
@@ -126,10 +136,10 @@ ${more.length ? `<div class="panel"><h3>Play next</h3><div class="shelf" style="
 <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="dlgGo" type="button">Sign in</button><button class="btn ghost" id="dlgNo" type="button">Keep playing as a guest</button></div></dialog>
 ${shareDialog(me)}`;
   const boot = { game: v.slug, title: v.title, origins: frame.origins, ref, signedIn: !!me };
-  const seo = PLAY_PAGES[g.slug];
-  return html(layout({ title: g.title, desc: seo ? seo.description : g.blurb, me, active: '/play/' + g.slug, body, url: siteURL(env) + '/play/' + g.slug,
-    canonicalPath: '/play/' + g.slug, jsonld: seo && seo.jsonld,
-    og: { title: `Play ${g.title} free on RookieGamers`, image: coverURL(g) },
+  const desc = playDescription(g);
+  return html(layout({ title: `Play ${g.title} free online`, desc, me, active: '/play/' + g.slug, body, url: siteURL(env) + '/play/' + g.slug,
+    canonicalPath: '/play/' + g.slug, jsonld: playJSONLD(env, g, desc),
+    og: { title: `Play ${g.title} free on RookieGamers`, image: gameImage(env, g), alt: `${g.title} on RookieGamers` },
     scripts: `<script>window.RG_PLAY=${data(boot)}</script><script src="/portal.js"></script>` }));
 }
 
@@ -151,7 +161,7 @@ async function sharePage(DB, req, env, id) {
     if (!me) cookies.push(setCookie(req, VIA_COOKIE, sh.player_id, VIA_DAYS * 86400), setCookie(req, SHARE_COOKIE, sh.id, VIA_DAYS * 86400));
   }
   const body = `<section class="hero"><h1>${esc(title)}</h1><p class="lede">${esc(sh.text || g.blurb)}</p><a class="btn" href="${esc(to)}">Play ${esc(g.title)}</a></section>`;
-  const res = html(layout({ title, desc: g.blurb, me, body, url: siteURL(env) + '/s/' + sh.id, og: { title, desc: sh.text || g.blurb, image: coverURL(g) },
+  const res = html(layout({ title, desc: g.blurb, me, body, url: siteURL(env) + '/s/' + sh.id, og: { title, desc: sh.text || g.blurb, image: gameImage(env, g) }, robots: 'noindex,follow',
     scripts: `<script>location.replace(${data(to)})</script>` }));
   for (const c of cookies) res.headers.append('set-cookie', c);
   return res;
@@ -165,7 +175,7 @@ async function hallOfFame(DB, req, env) {
   const body = `<h1>Hall of Fame</h1><p class="lede">Every month, the top 3 players in every game are kept here forever. Champions wear their title in every game on RookieGamers.</p>
 ${Object.keys(months).length ? Object.entries(months).map(([m, games]) => `<section class="fame-month"><h2>${esc(monthLabel(m))}</h2><div class="fame-grid">${Object.entries(games).map(([slug, g]) => `<div class="panel"><h3><a href="/play/${esc(slug)}">${esc(g.title)}</a></h3>${boardList(g.rows, 'champions')}</div>`).join('')}</div></section>`).join('')
     : `<div class="empty">The first champions are crowned on ${esc(monthLabel(monthKey()))}'s last day. Go set a score.</div>`}`;
-  return html(layout({ title: 'Hall of Fame', me, active: '/hall-of-fame', body, url: siteURL(env) + '/hall-of-fame', canonicalPath: '/hall-of-fame', jsonld: HALL_OF_FAME_JSONLD }));
+  return html(layout({ title: 'Hall of Fame', desc: 'Every month the top 3 players in every RookieGamers game are kept in the Hall of Fame forever, and wear a champion title across the portal.', me, active: '/hall-of-fame', body, url: siteURL(env) + '/hall-of-fame', canonicalPath: '/hall-of-fame', jsonld: HALL_OF_FAME_JSONLD }));
 }
 
 const NET_NAMES = { scenespot: 'SceneSpot', google: 'Google', discord: 'Discord', x: 'X', twitch: 'Twitch', github: 'GitHub' };
@@ -294,7 +304,7 @@ document.getElementById('signOut').onclick=async()=>{await fetch('/api/auth/sign
 const ic=document.getElementById('inviteCopy');if(ic)ic.onclick=async()=>{const i=document.getElementById('inviteUrl');i.select();try{await navigator.clipboard.writeText(i.value)}catch(e){document.execCommand('copy')}ic.textContent='Copied'};
 const is=document.getElementById('inviteShare');if(is&&navigator.share)is.hidden=false;if(is)is.onclick=()=>navigator.share({title:'RookieGamers',text:'Play free games with me on RookieGamers.',url:document.getElementById('inviteUrl').value}).catch(()=>{});
 </script>` : fbtn ? `<script>${FRIENDS_JS}</script>` : '';
-  return html(layout({ title: pub.name, me, body, scripts: script }));
+  return html(layout({ title: pub.name, desc: `${pub.name} on RookieGamers: level ${pub.level}${pub.title ? `, ${pub.title}` : ''}. Trophies, Hall of Fame finishes and games played.`, me, body, scripts: script, url: siteURL(env) + '/u/' + pub.id, canonicalPath: '/u/' + pub.id, og: { type: 'profile' } }));
 }
 
 function signinPage(env, me, url) {
@@ -377,13 +387,13 @@ bearer_token_env_var = "ROOKIEGAMERS_API_KEY"</code></pre></div>
 <div class="panel"><h3>CLI</h3><pre><code>curl -O ${esc(site)}/rg.mjs
 node rg.mjs init my-game
 node rg.mjs deploy ./my-game --game my-game</code></pre></div></div>`;
-  if (!me) return html(layout({ title: 'Publish', me, active: '/dev', body: `<h1>Publish your game on RookieGamers</h1><p class="lede">Every game on RookieGamers shares one player base. Your players find other games, and their players find yours. AI-built games are welcome.</p><a class="btn" href="/signin?next=${encodeURIComponent('/dev' + (invite ? '?invite=' + invite : ''))}">Sign in to start</a>${agents}`, canonicalPath: '/dev', jsonld: DEV_JSONLD }));
+  if (!me) return html(layout({ title: 'Publish', desc: 'Publish your web game on RookieGamers: get a developer key, add the SDK, and ship with the MCP server, Claude Code, Codex, the xAI API or the command-line tool.', me, active: '/dev', body: `<h1>Publish your game on RookieGamers</h1><p class="lede">Every game on RookieGamers shares one player base. Your players find other games, and their players find yours. AI-built games are welcome.</p><a class="btn" href="/signin?next=${encodeURIComponent('/dev' + (invite ? '?invite=' + invite : ''))}">Sign in to start</a>${agents}`, canonicalPath: '/dev', jsonld: DEV_JSONLD }));
   const isDev = await isDeveloper(DB, me.id);
   if (!isDev) {
     const open = env.OPEN_DEVELOPERS === '1';
     const body = `<h1>Become a developer</h1><p class="lede">${open ? 'Publishing is open. One click and you can make API keys and publish games.' : 'Publishing is invite-only while we start. Paste your invite code, or open the invite link you were sent.'}</p>
 <form class="form" id="joinForm">${open ? '' : `<input name="invite" value="${esc(invite)}" placeholder="inv_..." aria-label="Invite code" required>`}<button class="btn" type="submit">Become a developer</button><div id="joinMsg"></div></form>${agents}`;
-    return html(layout({ title: 'Publish', me, active: '/dev', body, canonicalPath: '/dev', jsonld: DEV_JSONLD, scripts: `<script>document.getElementById('joinForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);const r=await fetch('/api/dev/join',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({invite:f.get('invite')})});const j=await r.json();if(r.ok)location.href='/dev';else{const m=document.getElementById('joinMsg');m.innerHTML='<div class="note err"></div>';m.firstChild.textContent=j.error}}</script>` }));
+    return html(layout({ title: 'Publish', desc: 'Publish your web game on RookieGamers: get a developer key, add the SDK, and ship with the MCP server, Claude Code, Codex, the xAI API or the command-line tool.', me, active: '/dev', body, canonicalPath: '/dev', jsonld: DEV_JSONLD, scripts: `<script>document.getElementById('joinForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);const r=await fetch('/api/dev/join',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({invite:f.get('invite')})});const j=await r.json();if(r.ok)location.href='/dev';else{const m=document.getElementById('joinMsg');m.innerHTML='<div class="note err"></div>';m.firstChild.textContent=j.error}}</script>` }));
   }
   const [games, keys] = await Promise.all([myGames(DB, me.id), listKeys(DB, me.id)]);
   const cash = await devMoneySection(DB, env, me.id, games);
@@ -398,7 +408,7 @@ document.getElementById('keyForm').onsubmit=async e=>{e.preventDefault();const f
 m.innerHTML=r.ok?'<div class="note ok">Your new key (shown once, keep it secret): <code id="newKey"></code></div>':'<div class="note err"></div>';if(r.ok)document.getElementById('newKey').textContent=j.key;else m.firstChild.textContent=j.error};
 document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{await fetch('/api/dev/keys',{method:'DELETE',headers:{'content-type':'application/json'},body:JSON.stringify({prefix:b.dataset.del})});location.reload()});
 </script>`;
-  return html(layout({ title: 'Developer', me, active: '/dev', body, canonicalPath: '/dev', jsonld: DEV_JSONLD, scripts: script }));
+  return html(layout({ title: 'Developer', desc: 'Publish your web game on RookieGamers: get a developer key, add the SDK, and ship with the MCP server, Claude Code, Codex, the xAI API or the command-line tool.', me, active: '/dev', body, canonicalPath: '/dev', jsonld: DEV_JSONLD, scripts: script }));
 }
 
 // Just enough Markdown for docs/SDK.md: headings, paragraphs, lists, tables, code.
@@ -431,7 +441,7 @@ export function markdown(md) {
 async function docs(DB, req, env) {
   const me = await viewer(DB, req);
   const md = SDK_DOCS.replaceAll('https://rookiegamers.com', siteURL(env));
-  return html(layout({ title: 'SDK docs', me, active: '/docs', body: `<article class="doc">${markdown(md)}</article>`, url: siteURL(env) + '/docs', canonicalPath: '/docs', jsonld: DOCS_JSONLD }));
+  return html(layout({ title: 'SDK docs', desc: 'RookieGamers SDK v1 reference: one script tag adds sign-in, leaderboards, the Hall of Fame, cloud saves and play-next cards to a web game.', me, active: '/docs', body: `<article class="doc">${markdown(md)}</article>`, url: siteURL(env) + '/docs', canonicalPath: '/docs', jsonld: DOCS_JSONLD }));
 }
 
 // The Diamond Shop: spend gems on platform icons. Icons are bought here or earned; social media
@@ -493,7 +503,7 @@ if(b.dataset.buy!==undefined)await post('/api/shop/equip',{icon:b.dataset.buy});
 }
 
 function notFound(me, msg = 'Nothing here.') {
-  return html(layout({ me, title: 'Not found', body: `<h1>${esc(msg)}</h1><p class="lede"><a href="/">Find a game to play</a>.</p>` }), 404);
+  return html(layout({ me, title: 'Not found', robots: 'noindex', body: `<h1>${esc(msg)}</h1><p class="lede"><a href="/">Find a game to play</a>.</p>` }), 404);
 }
 
 // /about, /creators, /ai, /faq: ordinary static pages, copy and JSON-LD from seo/copy.js.

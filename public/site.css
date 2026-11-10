@@ -37,6 +37,8 @@ h2{font-size:22px;margin:36px 0 14px;letter-spacing:-.01em}
 .play{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:20px;align-items:start}
 .stage{background:#000;border-radius:var(--r);overflow:hidden;border:1px solid var(--line);aspect-ratio:16/10;max-height:calc(100vh - 150px);width:100%}
 .stage iframe{display:block;width:100%;height:100%;border:0}
+.stage{position:relative}.gload{position:absolute;inset:0;z-index:1;display:grid;place-items:center;background:linear-gradient(135deg,var(--c),#0f0d16 85%);transition:opacity .3s}.gload>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.35}.gload.done{opacity:0;pointer-events:none}
+.gl-in{position:relative;display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;padding:16px}.gl-in b{font-size:18px}.spin{width:44px;height:44px;border-radius:50%;border:4px solid #fff3;border-top-color:#fff;animation:spin .9s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
 .stagebar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:12px 0 0}
 .stagebar h1{font-size:24px;margin:0}
 .side{display:flex;flex-direction:column;gap:16px}

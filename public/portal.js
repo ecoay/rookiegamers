@@ -7,6 +7,14 @@
   if (!B || !frame) return;
   let ready = false;
 
+  // A cover with a spinner sits over the game until it loads, so a slow game doesn't look like a
+  // dead tap. It lifts when the frame loads or the game says hello, and offers a direct link if slow.
+  const loading = document.getElementById('gameLoading');
+  const loaded = () => loading && loading.classList.add('done');
+  if (frame.dataset.loaded) setTimeout(loaded, 600); else frame.addEventListener('load', () => setTimeout(loaded, 600));
+  setTimeout(() => { const s = loading && loading.querySelector('.gl-slow'); if (s && !loading.classList.contains('done')) s.hidden = false; }, 8000);
+  setTimeout(loaded, 30000);
+
   const allowed = o => B.origins.includes(o);
   const target = () => (B.origins[0] === 'null' ? '*' : null);
   function send(msg, origin) { frame.contentWindow.postMessage(Object.assign({ rg: 1 }, msg), target() || origin); }
@@ -173,7 +181,7 @@
     const m = e.data;
     const answer = data => send({ re: m.id, data }, e.origin);
     switch (m.type) {
-      case 'hello': ready = true; return answer({ game: B.game, ref: B.ref, auth: await token(), muted });
+      case 'hello': ready = true; loaded(); return answer({ game: B.game, ref: B.ref, auth: await token(), muted });
       case 'token': return answer(await token());
       case 'login': return answer(await login());
       case 'share': return answer(await share(m.data));

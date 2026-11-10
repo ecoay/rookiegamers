@@ -46,6 +46,9 @@ To run your account and sign you in, keep scores and the Hall of Fame, award gem
 ## Cookies
 We use a sign-in cookie to keep you signed in, short-lived cookies while a sign-in is in progress, and a cookie that remembers which friend's invite link brought you here (for 30 days). Your sound setting is saved in your browser. When ads are on, ad networks may set their own cookies.
 
+## Advertising
+Google and third-party vendors use cookies to serve ads based on prior visits to this site and other sites. Google's advertising cookies enable Google and its partners to serve ads based on your visits. You can opt out of personalized advertising at [Google's Ads Settings](https://www.google.com/settings/ads) and at [aboutads.info/choices](https://www.aboutads.info/choices/). How Google uses information from sites or apps that use its services is described at [Google's partner-sites policy](https://policies.google.com/technologies/partner-sites).
+
 ## Children
 RookieGamers accounts are for people 13 and up. We don't knowingly collect personal information from children under 13. If you believe a child under 13 has made an account, email ${CONTACT} and we'll delete it. Crypto features are 18+ only.
 

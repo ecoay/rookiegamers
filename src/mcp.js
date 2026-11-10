@@ -16,7 +16,7 @@ const PROTOCOLS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
 const MAX_UPLOAD_CALL = 20 * 1024 * 1024;
 
 const INSTRUCTIONS = `RookieGamers is a web game portal. Every game shares one player account, leaderboards, a Hall of Fame and "play next" cross-promotion through the RookieGamers SDK (one script tag, global \`rg\`). AI-built games are welcome.
-Typical flow: get_sdk_docs, then scaffold_game (or add the SDK to an existing game), test locally with ?rg_test=1, then create_game, upload_files and publish_game. Publishing checks the build for index.html, the SDK, a viewport tag, no outside ad code and no sign-in of its own (the RookieGamers account is the only login).`;
+Typical flow: get_sdk_docs, then scaffold_game (or add the SDK to an existing game), test locally with ?rg_test=1, then create_game, upload_files and publish_game. Publishing checks the build for index.html, the SDK, a viewport tag, no outside ad code and no sign-in of its own (the RookieGamers account is the only login). A developer's first game then waits for review by RookieGamers (publish_game answers pending: true); once one is approved, later games and updates go live right after the checks. list_my_games shows each game's status: live, pending, rejected (with the reason in review.note) or draft.`;
 
 const str = (description, extra = {}) => ({ type: 'string', description, ...extra });
 const SLUG = str('The game\'s slug: lowercase letters, numbers and dashes, like "sky-harvest".');
@@ -79,7 +79,7 @@ const TOOLS = [
       for (let i = 0; i < files.length; i++) out.push(await dev.putFile(ctx.DB, ctx.env, ctx.pid, a.slug, String(a.version), String(files[i].path), bodies[i], bodies[i].byteLength));
       return { uploaded: out.length, bytes: total, files: out.map(f => f.path), next: `When every file is up, call publish_game with slug "${a.slug}" and version "${a.version}".` };
     } },
-  { name: 'publish_game', description: 'Run the publishing checks and make a build live at rookiegamers.com/play/<slug>. Linked games go live without a build.',
+  { name: 'publish_game', description: 'Run the publishing checks and make a build live at rookiegamers.com/play/<slug>. Linked games skip the build checks. A developer\'s first game goes to the review queue instead (pending: true) and goes live when RookieGamers approves it; later games and updates go live right away.',
     inputSchema: { type: 'object', properties: { slug: SLUG, version: str('Hosted games: the build to publish. Defaults to the latest upload.') }, required: ['slug'] },
     run: (a, ctx) => dev.publish(ctx.DB, ctx.env, ctx.pid, a.slug, a.version) },
   { name: 'unpublish_game', description: 'Take a game off the portal. Its boards and Hall of Fame are kept.',

@@ -323,67 +323,9 @@ export const HALL_OF_FAME_JSONLD = [{
   ],
 }];
 
-// /play/<slug>: COPY.md put the VideoGame at the top of the @graph with the BreadcrumbList
-// attached directly to it. The build brief instead requires the VideoGame to be the mainEntity of
-// a WebPage, with the BreadcrumbList on that WebPage. Applied here; see NOTES.md.
-function playPageJSONLD({ path, name, description, playMode }) {
-  const page = `https://rookiegamers.com${path}`;
-  const videoGame = {
-    '@type': 'VideoGame',
-    '@id': `${page}#game`,
-    name,
-    url: page,
-    description,
-    author: { '@type': 'Person', name: 'ecoay' },
-    publisher: { '@id': 'https://rookiegamers.com/#org' },
-    gamePlatform: 'Web browser',
-    ...(playMode ? { playMode } : {}),
-    isAccessibleForFree: true,
-  };
-  return [{
-    '@context': 'https://schema.org',
-    '@graph': [
-      ORG,
-      {
-        '@type': 'WebPage',
-        '@id': `${page}#page`,
-        url: page,
-        name,
-        description,
-        isPartOf: { '@id': 'https://rookiegamers.com/#site' },
-        publisher: { '@id': 'https://rookiegamers.com/#org' },
-        breadcrumb: { '@id': `${page}#breadcrumb` },
-        mainEntity: { '@id': `${page}#game` },
-      },
-      videoGame,
-      {
-        '@type': 'BreadcrumbList',
-        '@id': `${page}#breadcrumb`,
-        itemListElement: [
-          { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://rookiegamers.com/' },
-          { '@type': 'ListItem', position: 2, name, item: page },
-        ],
-      },
-    ],
-  }];
-}
-
-// Meta description + JSON-LD for the two /play/<slug> routes COPY.md specifies. Other games are
-// untouched (out of scope for this change).
+// Hand-written meta descriptions for /play/<slug>. Every live game gets VideoGame structured data
+// from seo/dynamic.js; games not listed here use their blurb.
 export const PLAY_PAGES = {
-  unsays: {
-    description: "Things you can't unsay. Everyone gets the same letters, writes a line for the topic, then everyone votes.",
-    jsonld: playPageJSONLD({
-      path: '/play/unsays', name: 'unsays',
-      description: "Things you can't unsay. Everyone gets the same letters, writes a line for the topic, then everyone votes.",
-      playMode: 'MultiPlayer',
-    }),
-  },
-  buyyourfriends: {
-    description: 'BuyYourFriends, a RookieGamers original by ecoay. Free to play in your browser.',
-    jsonld: playPageJSONLD({
-      path: '/play/buyyourfriends', name: 'BuyYourFriends',
-      description: 'BuyYourFriends, a RookieGamers original by ecoay. Free to play in your browser.',
-    }),
-  },
+  unsays: { description: "Things you can't unsay. Everyone gets the same letters, writes a line for the topic, then everyone votes." },
+  buyyourfriends: { description: 'BuyYourFriends, a RookieGamers original by ecoay. Free to play in your browser.' },
 };

@@ -41,7 +41,7 @@ async function walk(dir) {
 function report(r) {
   for (const p of r.problems || []) console.log('  ✗ ' + p);
   for (const w of r.warnings || []) console.log('  ! ' + w);
-  console.log(r.live ? `Live: ${r.url}` : 'Not published. Fix the problems above and publish again.');
+  console.log(r.live ? `Live: ${r.url}` : r.pending ? `Waiting for review. ${r.message || ''}` : 'Not published. Fix the problems above and publish again.');
 }
 
 if (cmd === 'init') {
@@ -74,7 +74,7 @@ if (cmd === 'init') {
 } else if (cmd === 'publish') {
   report(await api('POST', `/api/dev/games/${args[0] || die('Usage: rg publish <slug>')}/publish`, { version: flags.version }));
 } else if (cmd === 'games') {
-  for (const g of (await api('GET', '/api/dev/games')).games) console.log(`${g.slug.padEnd(24)} ${g.live ? 'live' : 'draft'}  ${g.kind}  ${g.version || ''}`);
+  for (const g of (await api('GET', '/api/dev/games')).games) console.log(`${g.slug.padEnd(24)} ${(g.status || (g.live ? 'live' : 'draft')).padEnd(8)}  ${g.kind}  ${g.version || ''}${g.status === 'rejected' && g.review?.note ? `  (${g.review.note})` : ''}`);
 } else if (cmd === 'stats') {
   console.log(JSON.stringify(await api('GET', `/api/dev/games/${args[0] || die('Usage: rg stats <slug>')}/stats`), null, 2));
 } else if (cmd === 'server-key') {

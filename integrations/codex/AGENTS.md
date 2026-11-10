@@ -12,10 +12,12 @@ RookieGamers is a web game portal where every game shares one player account, le
    - `rg.game.gameplayStart()` / `rg.game.gameplayStop()` around real play
    - `rg.scores.submit({ score })` at the end of a run, and `rg.user.login()` only if it returns `signin: true`
    - `rg.promo.showNext()` at a natural break like game over
-4. Test locally: serve the folder (for example `npx serve` or `python3 -m http.server`) and open it with `?rg_test=1`. Test mode fakes a signed-in player and keeps scores in memory. Check it on a phone-sized viewport and with touch.
+4. Test locally: serve the folder (for example `npx serve` or `python3 -m http.server`) and open it with `?rg_test=1`. Test mode fakes a signed-in player and keeps scores in memory. Check it on a phone-sized viewport and with touch. To test real sign-in, scores and saves without touching real players, load the SDK from the staging site instead (`https://rookiegamers-staging.ecoay.workers.dev/sdk/v1.js`) and run the game on `localhost` or `127.0.0.1`; switch the script back to `https://rookiegamers.com/sdk/v1.js` before publishing.
 5. Publish:
    - `create_game` (first time only) with a slug, title, blurb and tags. Pick `scoreOrder: "asc"` for times where lower is better.
    - `upload_files` with every file in the build, `encoding: "base64"` for binary files, and a new `version` each release. Split big builds across several calls.
+   - `upload_cover` with a 16:9 cover image (1280 by 720 is ideal) so the game card and link previews aren't blank.
+   - If the developer has a studio, `list_studios` and set `studio` with `update_game` (or `save_studio` to make one, and `upload_studio_logo` for its logo).
    - `publish_game`. If it reports problems, fix them and upload a new version. Show the user the warnings too.
 6. Give the user the live URL from `publish_game`. If it answers `pending: true`, this is the developer's first game: it's in the RookieGamers review queue and goes live once approved. Tell the user that, and that later games and updates go live right away.
 

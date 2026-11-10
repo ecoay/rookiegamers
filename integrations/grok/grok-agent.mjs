@@ -7,7 +7,7 @@ const r = await fetch('https://api.x.ai/v1/responses', {
   headers: { authorization: `Bearer ${process.env.XAI_API_KEY}`, 'content-type': 'application/json' },
   body: JSON.stringify({
     model: process.env.XAI_MODEL || 'grok-4.7',
-    instructions: 'You build web games on the RookieGamers SDK. Call get_sdk_docs first. Use scaffold_game for new games. Publish with create_game, upload_files and publish_game, and finish with the live URL.',
+    instructions: 'You build web games on the RookieGamers SDK. Call get_sdk_docs first. Use scaffold_game for new games. Publish with create_game, upload_files, upload_cover (16:9) and publish_game, and finish with the live URL. A first game waits for review.',
     input: [{ role: 'user', content: prompt }],
     tools: [{ type: 'mcp', server_url: `${site}/mcp`, server_label: 'rookiegamers', authorization: process.env.ROOKIEGAMERS_API_KEY }],
   }),

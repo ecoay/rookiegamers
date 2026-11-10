@@ -55,7 +55,7 @@ Test mode (below) is still the quickest way to build with no network at all.
 
 ### `rg.init({ game, test })`
 
-Call first, once. `game` is your slug. `test: true` (or `?rg_test=1` in the URL) turns on **test mode**: a fake signed-in player, scores kept in memory, and a sample "play next" card, so you can build without a network or an account. Resolves to `{ ok, mode }` where `mode` is `"portal"`, `"standalone"` or `"test"`.
+Call first, once. `game` is your slug. `test: true` (or `?rg_test=1` in the URL) turns on **test mode**: a fake signed-in player, scores kept in memory, and a sample "play next" card, so you can build without a network or an account. Resolves to `{ ok, mode, staging }` where `mode` is `"portal"`, `"standalone"` or `"test"`, and `staging` is true when the SDK was loaded from the staging site (also on `rg.staging`; see [Staging](#staging)).
 
 ### Game events
 
@@ -281,6 +281,8 @@ Publishing runs quick checks first: an `index.html` exists, it loads the SDK, it
 
 **Your first game is reviewed.** RookieGamers plays every developer's first game before it goes live. Publishing it answers `{ "live": false, "pending": true }` (HTTP 202) and the game waits in the review queue, usually a day or two. If it's approved, it goes live and so does everything after: your later games and updates go live as soon as they pass the checks. If it isn't, `GET /api/dev/games` shows `status: "rejected"` and the reason in `review.note`; fix it and publish again. Each game's `status` is `live`, `pending`, `rejected` or `draft`. While a build waits for review it can't be changed, so upload a new version if you need to fix something.
 
+**Game studios.** Credit your games to a studio with its own name, logo, website and about text. Game pages and cards show the studio logo next to your developer name and link to the studio's page. Make one on `/dev`, through the MCP server (`save_studio`), or with the API below, then set `studio` on each game.
+
 Ways to publish, all with the same powers:
 
 - **AI agents:** connect Claude Code, Codex, Grok or any MCP client to `https://rookiegamers.com/mcp` with your API key. See `/dev` on the portal for one-line setup.
@@ -294,8 +296,13 @@ All calls take `Authorization: Bearer rgk_...` (make a key at `rookiegamers.com/
 | Method and path | Does |
 | --- | --- |
 | `GET /api/dev/games` | Your games |
-| `POST /api/dev/games` | Create a game: `{ slug, title, kind, blurb, tags, url, origins, devices, multiplayer, scoreLabel, scoreOrder, scoreMode, maxScore }` |
+| `POST /api/dev/games` | Create a game: `{ slug, title, kind, blurb, tags, url, origins, devices, multiplayer, scoreLabel, scoreOrder, scoreMode, maxScore, cover, color, studio }` |
 | `PATCH /api/dev/games/<slug>` | Change any of those fields |
+| `PUT /api/dev/games/<slug>/cover` | Upload cover art (raw PNG, JPEG, WebP, GIF or AVIF body, up to 5 MB). Covers show at 16:9, so 1280 by 720 is ideal |
+| `GET /api/dev/studios` | Your game studios |
+| `POST /api/dev/studios` | Create or update a studio: `{ slug, name, url, bio }`. Its page is `rookiegamers.com/studio/<slug>` |
+| `PUT /api/dev/studios/<slug>/logo` | Upload the studio logo (raw image body, square, up to 5 MB) |
+| `DELETE /api/dev/studios/<slug>` | Delete a studio (its games go back to showing your developer name) |
 | `PUT /api/dev/games/<slug>/builds/<version>/files/<path>` | Upload one file of a build (raw body) |
 | `GET /api/dev/games/<slug>/builds` | Uploaded builds |
 | `POST /api/dev/games/<slug>/publish` | Make a build live: `{ version }` (latest build if left out). A first game goes to review instead (202, `pending: true`) |

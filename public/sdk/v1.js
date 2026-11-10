@@ -7,6 +7,9 @@
   const SCRIPT = document.currentScript;
   const PORTAL = SCRIPT && SCRIPT.src ? new URL(SCRIPT.src).origin : 'https://rookiegamers.com';
   const API = PORTAL + '/api/v1';
+  // Loaded from the staging site (rookiegamers-staging...): test data only, never production.
+  const STAGING = /(^|[.-])staging[.-]/.test(new URL(PORTAL).hostname);
+  if (STAGING && window.console) console.info('[rg] Using RookieGamers staging (' + PORTAL + '): test data only. Load the SDK from https://rookiegamers.com before you ship.');
   const inFrame = (() => { try { return window.parent !== window; } catch (e) { return true; } })();
   const qs = new URLSearchParams(location.search);
 
@@ -99,20 +102,20 @@
 
   async function init(opts) {
     opts = opts || {};
-    if (S.mode) return ok({ mode: S.mode });
+    if (S.mode) return ok({ mode: S.mode, staging: STAGING });
     S.game = String(opts.game || '');
     S.debug = !!opts.debug;
     if (!/^[a-z0-9-]{1,32}$/.test(S.game)) return bad('Pass your game\'s slug: rg.init({ game: "my-game" })');
-    if (opts.test || qs.get('rg_test') === '1') { S.mode = 'test'; S.test = { scores: [] }; S.user = { id: 'p_test', name: 'Test Player', avatar: null, level: 3, xp: 420, title: 'Test champion · Jan 2026', guild: null, adult: false }; log('test mode'); return ok({ mode: 'test' }); }
+    if (opts.test || qs.get('rg_test') === '1') { S.mode = 'test'; S.test = { scores: [] }; S.user = { id: 'p_test', name: 'Test Player', avatar: null, level: 3, xp: 420, title: 'Test champion · Jan 2026', guild: null, adult: false }; log('test mode'); return ok({ mode: 'test', staging: STAGING }); }
     if (inFrame) {
       const w = await ask('hello', { game: S.game, sdk: 1 }, 1500);
-      if (w && w.game === S.game) { S.mode = 'portal'; S.ref = w.ref || S.ref; setAuth(w.auth); setMute('player', !!w.muted); log('portal mode'); return ok({ mode: 'portal' }); }
+      if (w && w.game === S.game) { S.mode = 'portal'; S.ref = w.ref || S.ref; setAuth(w.auth); setMute('player', !!w.muted); log('portal mode'); return ok({ mode: 'portal', staging: STAGING }); }
     }
     S.mode = 'standalone';
     const saved = store.get('rg.auth.' + S.game);
     if (saved && saved.exp > Date.now() + 60000) setAuth(saved); else S.user = null;
     log('standalone mode');
-    return ok({ mode: 'standalone' });
+    return ok({ mode: 'standalone', staging: STAGING });
   }
   const ready = async () => { if (!S.mode) await init({ game: S.game || (SCRIPT && SCRIPT.dataset.game) }); };
 
@@ -555,7 +558,7 @@
   };
   const wallet = { available: false, async get() { return null; } };
 
-  window.rg = { version: '1.5.0', portal: PORTAL, init, game, user, scores, friends: friendsApi, level, fame, promo, share, data, invite, store: storeApi, guild, ads, audio, wallet,
+  window.rg = { version: '1.6.0', portal: PORTAL, staging: STAGING, init, game, user, scores, friends: friendsApi, level, fame, promo, share, data, invite, store: storeApi, guild, ads, audio, wallet,
     get mode() { return S.mode; } };
   if (SCRIPT && SCRIPT.dataset.game) init({ game: SCRIPT.dataset.game });
 })();

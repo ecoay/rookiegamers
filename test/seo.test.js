@@ -324,3 +324,11 @@ test('markdown renders headings from Windows (CRLF) files, down to ####', async 
   assert.match(html, /<h4 id="the-ad-terms">The ad terms<\/h4>/);
   assert.ok(!html.includes('\r'));
 });
+
+test('home and a pages.js page include impact-site-verification', async () => {
+  const env = await setup();
+  const meta = /<meta name="impact-site-verification" value="c1bf013b-98e9-4301-81d1-32679b2d3b60">/;
+  assert.match(await (await get(env, '/')).text(), meta);
+  assert.match(await (await get(env, '/privacy')).text(), meta);
+  assert.match(await (await get(env, '/about')).text(), meta);
+});

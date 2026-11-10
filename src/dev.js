@@ -165,7 +165,11 @@ export const MAX_COVER_BYTES = 5 * 1024 * 1024;
 // Upload a cover image (raw body). It's stored in R2 under _covers/ and served from /covers/ on the
 // portal, and the game's cover points at it. Each upload gets a new name, so caches never go stale.
 // Store an uploaded image in R2 as <prefix>/<slug>/<random>.<ext> and return its file name.
+// Staging is open to anyone, so it hosts no files: test there with a linked game on localhost.
+const noStagingUploads = env => { if (env.STAGING === '1') fail(403, 'Uploads are off on staging. Make a linked game whose URL is your localhost address instead.'); };
+
 async function putImage(env, prefix, slug, body, type, size) {
+  noStagingUploads(env);
   if (!env.GAMES) fail(503, 'Image storage isn\'t set up (no R2 bucket bound).');
   const ext = COVER_TYPES[String(type || '').split(';')[0].trim().toLowerCase()];
   if (!ext) fail(415, 'Images can be PNG, JPEG, WebP, GIF or AVIF.');
@@ -255,6 +259,7 @@ async function checkStudio(DB, pid, studio, admin) {
 /* ---------- builds ---------- */
 
 export async function putFile(DB, env, pid, slug, version, path, body, size, admin = false) {
+  noStagingUploads(env);
   if (!env.GAMES) fail(503, 'Game hosting isn\'t set up (no R2 bucket bound).');
   const g = await ownGame(DB, pid, slug, admin);
   if (!VERSION_RE.test(version)) fail(400, 'Versions are up to 40 letters, numbers, dots and dashes, like "1.0.3".');

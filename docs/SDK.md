@@ -45,7 +45,7 @@ Staging is a separate copy of RookieGamers at `https://rookiegamers-staging.ecoa
 1. Load the SDK from staging instead of rookiegamers.com: `<script src="https://rookiegamers-staging.ecoay.workers.dev/sdk/v1.js"></script>`. The SDK talks to whichever site it was loaded from.
 2. Run your game on `http://localhost:<port>` or `http://127.0.0.1:<port>`. Staging accepts sign-in from any localhost port for any game, so you don't need to add localhost to your game's origins.
 3. Sign in on staging with any email address. No email is sent: the sign-in link shows on the page.
-4. To test inside the portal frame, open `/dev` on staging, make a developer key and create your game there. Use a linked game whose URL is your localhost address, then open `/play/<slug>` on staging. Games go live on staging straight away, with no review.
+4. To test inside the portal frame, open `/dev` on staging, make a developer key and create your game there. Use a linked game whose URL is your localhost address, then open `/play/<slug>` on staging. Games go live on staging straight away, with no review. Staging doesn't host files, so build and cover uploads are turned off there.
 
 The command-line tool works against staging too: set `ROOKIEGAMERS_URL=https://rookiegamers-staging.ecoay.workers.dev` and use a key made on staging. Tokens from staging are signed by staging, so a game server that checks them should read the keys from staging's `/.well-known/jwks.json` while you test. Switch the script back to `https://rookiegamers.com/sdk/v1.js` before you ship.
 

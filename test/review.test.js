@@ -309,6 +309,8 @@ test('staging: a banner on every page, no review wait, and localhost sign-in', a
   assert.equal(up.status, 403); // staging hosts no files
   const connect = await worker.fetch(new Request('https://rg.test/sdk/connect?game=local-game&origin=' + encodeURIComponent('http://127.0.0.1:8080')), env, {});
   assert.doesNotMatch(await connect.text(), /Can't sign in here/);
+  const play = await (await worker.fetch(new Request('https://rg.test/play/local-game'), env, {})).text();
+  assert.match(play, /allow="[^"]*loopback-network/); // Chrome lets the frame reach localhost
 
   // Without STAGING, production is unchanged.
   delete env.STAGING; delete env.DEV_LOGIN;
@@ -317,4 +319,7 @@ test('staging: a banner on every page, no review wait, and localhost sign-in', a
   assert.equal(g2.slug, 'local-two');
   const prod = await worker.fetch(new Request('https://rg.test/sdk/connect?game=local-game&origin=' + encodeURIComponent('http://127.0.0.1:8080')), env, {});
   assert.match(await prod.text(), /Can't sign in here/);
+  const prodPlay = await (await worker.fetch(new Request('https://rg.test/play/local-game'), env, {})).text();
+  assert.match(prodPlay, /id="game"/);
+  assert.doesNotMatch(prodPlay, /loopback-network/);
 });

@@ -17,7 +17,7 @@ RookieGamers is a web game portal where every game shares one player account, le
    - `create_game` (first time only) with a slug, title, blurb and tags. Pick `scoreOrder: "asc"` for times where lower is better.
    - `upload_files` with every file in the build, `encoding: "base64"` for binary files, and a new `version` each release. Split big builds across several calls.
    - `publish_game`. If it reports problems, fix them and upload a new version. Show the user the warnings too.
-6. Give the user the live URL from `publish_game`.
+6. Give the user the live URL from `publish_game`. If it answers `pending: true`, this is the developer's first game: it's in the RookieGamers review queue and goes live once approved. Tell the user that, and that later games and updates go live right away.
 
 ## Rules
 

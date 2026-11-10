@@ -1,4 +1,4 @@
-import { getGame, getPlayer, publicPlayer, avatarFor, gameView, monthKey, monthLabel, levelFor, safeJSON } from './db.js';
+import { getGame, getPlayer, publicPlayer, avatarFor, gameView, monthKey, monthLabel, levelFor, safeJSON, coverSrc } from './db.js';
 import { sessionPlayer, providers, safeNext, setCookie } from './auth.js';
 import { getShare, isBot, countShareClick, validVia, referralStats, gemHistory, GEMS, linkGems, VIA_COOKIE, SHARE_COOKIE, VIA_DAYS, REFERRAL_PLAY_MS } from './growth.js';
 import { frontPage, topScores, fame, sealIfDue } from './play.js';
@@ -15,7 +15,7 @@ import { FOOTER_LINKS, NEW_PAGES, DEV_JSONLD, DOCS_JSONLD, HALL_OF_FAME_JSONLD, 
 import { gameImage, playJSONLD, DEFAULT_OG_IMAGE } from './seo/dynamic.js';
 
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const html = (body, status = 200, headers = {}) => new Response(body, { status, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', ...headers } });
+export const html = (body, status = 200, headers = {}) => new Response(body, { status, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', ...headers } });
 // Inline JSON safely inside <script>.
 const data = v => JSON.stringify(v).replace(/</g, '\\u003c');
 
@@ -27,7 +27,7 @@ const MEDAL = r => r === 1 ? 'gold' : r === 2 ? 'silver' : r === 3 ? 'bronze' : 
 const CUP = '<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M14 6h20v10a10 10 0 0 1-20 0z" fill="currentColor"/><path d="M14 9H7v4a7 7 0 0 0 7 7M34 9h7v4a7 7 0 0 1-7 7" fill="none" stroke="currentColor" stroke-width="3"/><path d="M21 26h6v8h-6z" fill="currentColor"/><path d="M14 36h20v6H14z" fill="currentColor"/><path d="M18 9v7" stroke="rgba(255,255,255,.45)" stroke-width="2.5" stroke-linecap="round"/></svg>';
 const gemCount = n => `<span class="gems" title="Gems">${GEM}${Number(n || 0).toLocaleString('en-US')}</span>`;
 
-function layout({ title, titleFull, desc, me, active, body, url, scripts = '', og = {}, canonicalPath, jsonld, robots }) {
+export function layout({ title, titleFull, desc, me, active, body, url, scripts = '', og = {}, canonicalPath, jsonld, robots }) {
   const t = titleFull || (title ? `${title} · RookieGamers` : 'RookieGamers · free web games, one account');
   const ogTitle = og.title || t, ogDesc = og.desc || desc || 'Play free web games from indie developers, with one account, one level and one Hall of Fame across every game.';
   const nav = [['/', 'Games'], ['/hall-of-fame', 'Hall of Fame'], ['/shop', 'Diamond Shop'], ['/dev', 'Publish'], ['/docs', 'SDK']];
@@ -46,7 +46,7 @@ ${me ? `<a class="me" href="/u/${esc(me.id)}#inventory" title="Your profile and 
 ${scripts}</body></html>`;
 }
 
-async function viewer(DB, req) {
+export async function viewer(DB, req) {
   const pid = await sessionPlayer(DB, req);
   const p = pid && await getPlayer(DB, pid);
   return p ? { ...publicPlayer(p), gems: p.gems } : null;
@@ -55,7 +55,7 @@ async function viewer(DB, req) {
 const initial = s => esc((s || '?').trim().charAt(0).toUpperCase());
 function art(g) {
   const color = /^#[0-9a-f]{6}$/i.test(g.color || '') ? g.color : '#8f6bff';
-  const cover = g.cover ? (/^https:\/\//.test(g.cover) ? g.cover : null) : null;
+  const cover = coverSrc(g);
   return `<div class="art" style="background:${cover ? `url('${esc(cover)}') center/cover,` : ''}linear-gradient(135deg,${color},#191626)">${cover ? '' : initial(g.title)}</div>`;
 }
 function card(g) {
@@ -397,8 +397,9 @@ node rg.mjs deploy ./my-game --game my-game</code></pre></div></div>`;
   }
   const [games, keys] = await Promise.all([myGames(DB, me.id), listKeys(DB, me.id)]);
   const cash = await devMoneySection(DB, env, me.id, games);
-  const body = `<h1>Developer</h1><p class="lede">Make an API key, connect your AI or the CLI, and publish. Games go live as soon as they pass the checks.</p>
-<h2>Your games</h2>${games.length ? `<table class="t"><tr><th>Game</th><th>Kind</th><th>Status</th><th>Version</th></tr>${games.map(g => `<tr><td>${g.live ? `<a href="/play/${esc(g.slug)}">${esc(g.title)}</a>` : esc(g.title)}</td><td>${esc(g.kind)}</td><td>${g.live ? 'Live' : 'Not published'}</td><td>${esc(g.version || '-')}</td></tr>`).join('')}</table>` : '<p class="muted">No games yet. Create one with your agent, the CLI, or the API.</p>'}
+  const body = `<h1>Developer</h1><p class="lede">Make an API key, connect your AI or the CLI, and publish. We play your first game before it goes live. After that, your games and updates go live as soon as they pass the checks.</p>
+${String(env.ADMIN_PLAYERS || '').split(',').map(s => s.trim()).includes(me.id) ? '<p><a class="btn ghost small" href="/admin">Admin: edit every game, review queue, invites</a></p>' : ''}
+<h2>Your games</h2>${games.length ? `<table class="t"><tr><th>Game</th><th>Kind</th><th>Status</th><th>Version</th></tr>${games.map(g => `<tr><td>${g.live ? `<a href="/play/${esc(g.slug)}">${esc(g.title)}</a>` : esc(g.title)}</td><td>${esc(g.kind)}</td><td>${g.status === 'live' ? 'Live' : g.status === 'pending' ? 'Waiting for review' : g.status === 'rejected' ? `Not approved: ${esc(g.review.note || '')}` : 'Not published'}</td><td>${esc(g.version || '-')}</td></tr>`).join('')}</table>` : '<p class="muted">No games yet. Create one with your agent, the CLI, or the API.</p>'}
 <h2>API keys</h2><form class="form" id="keyForm" style="flex-direction:row;max-width:520px"><input name="label" placeholder="Key name, like laptop or claude" aria-label="Key name"><button class="btn" type="submit">Make key</button></form><div id="keyMsg" style="margin:10px 0"></div>
 ${keys.length ? `<table class="t"><tr><th>Name</th><th>Key</th><th>Last used</th><th></th></tr>${keys.map(k => `<tr><td>${esc(k.label)}</td><td><code>${esc(k.prefix)}...</code></td><td>${k.used_at ? new Date(k.used_at).toISOString().slice(0, 10) : 'never'}</td><td><button class="btn ghost small" data-del="${esc(k.prefix)}" type="button">Delete</button></td></tr>`).join('')}</table>` : ''}
 ${cash.body}

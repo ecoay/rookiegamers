@@ -5,9 +5,10 @@ import { metaDeletion } from './account.js';
 import { jwks } from './tokens.js';
 import { apiV1, apiPortal, apiDev, json, CORS } from './api.js';
 import { mcp } from './mcp.js';
+import { adminPage, adminSession } from './admin.js';
 import { page, notFoundPage } from './pages.js';
 import { archiveMonth } from './play.js';
-import { siteURL, contentType } from './dev.js';
+import { siteURL, contentType, previewSig } from './dev.js';
 import { stripeWebhook, moneyPage } from './money-api.js';
 import { monthlyMoney } from './money.js';
 import { ROBOTS_TXT, LLMS_TXT, LLMS_FULL_TXT } from './seo/files.js';
@@ -22,14 +23,23 @@ const timingSafeEqual = (a, b) => {
   return x === 0;
 };
 
-// Hosted builds live in R2 at <slug>/<version>/<path>. Only the live version is served.
+// Hosted builds live in R2 at <slug>/<version>/<path>. Only the live version is served, plus
+// builds opened with a signed review link (~<sig>/<version>/...) from the admin review queue.
 async function hosted(env, DB, slug, rest) {
   if (!env.GAMES) return new Response('Game hosting is not set up.', { status: 503 });
-  const g = await DB.prepare('SELECT version, live FROM games WHERE slug = ? AND kind = ?').bind(slug, 'hosted').first();
-  if (!g || !g.live || !g.version) return new Response('Not found', { status: 404 });
+  let version, pm;
+  if ((pm = /^~([a-f0-9]{32})\/([^/]{1,40})\/(.*)$/.exec(rest || ''))) {
+    const exists = await DB.prepare('SELECT 1 FROM builds WHERE game = ? AND version = ?').bind(slug, pm[2]).first();
+    if (!exists || pm[1] !== await previewSig(env, slug, pm[2])) return new Response('Not found', { status: 404 });
+    version = pm[2]; rest = pm[3];
+  } else {
+    const g = await DB.prepare('SELECT version, live FROM games WHERE slug = ? AND kind = ?').bind(slug, 'hosted').first();
+    if (!g || !g.live || !g.version) return new Response('Not found', { status: 404 });
+    version = g.version;
+  }
   const path = !rest || rest.endsWith('/') ? (rest || '') + 'index.html' : rest;
   if (path.includes('..')) return new Response('Not found', { status: 404 });
-  const obj = await env.GAMES.get(`${slug}/${g.version}/${path}`);
+  const obj = await env.GAMES.get(`${slug}/${version}/${path}`);
   if (!obj) return new Response('Not found', { status: 404 });
   const h = new Headers({ 'content-type': obj.httpMetadata?.contentType || contentType(path), etag: obj.httpEtag,
     'cache-control': path.endsWith('.html') ? 'no-cache' : 'public, max-age=300', 'x-content-type-options': 'nosniff',
@@ -75,12 +85,21 @@ async function handle(req, env, ctx) {
     if (path === '/stripe/webhook') return await stripeWebhook(req, env, DB);
     if (path.startsWith('/api/admin/')) {
       const tok = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
-      if (!env.ADMIN_TOKEN || !timingSafeEqual(tok, env.ADMIN_TOKEN)) return json({ error: 'Admin only.' }, 401);
+      // The ADMIN_TOKEN (scripts, curl) or a signed-in admin on the /admin page.
+      const ok = (env.ADMIN_TOKEN && timingSafeEqual(tok, env.ADMIN_TOKEN)) || (!tok && await adminSession(DB, env, req));
+      if (!ok) return json({ error: 'Admin only.' }, 401);
       return await apiDev(req, env, DB, url, { admin: true });
     }
     if (path.startsWith('/api/')) return await apiPortal(req, env, DB, url);
     if (path === '/auth/email') return await emailVerify(DB, req);
+    if (path === '/admin') return await adminPage(DB, env, req);
     let m;
+    // Uploaded cover art (src/dev.js putCover). Names are unique per upload, so they cache forever.
+    if ((m = path.match(/^\/covers\/([a-z0-9-]{1,32})\/([a-z0-9]{12}\.(?:png|jpg|webp|gif|avif))$/))) {
+      const obj = env.GAMES && await env.GAMES.get(`_covers/${m[1]}/${m[2]}`);
+      if (!obj) return new Response('Not found', { status: 404 });
+      return new Response(obj.body, { headers: { 'content-type': obj.httpMetadata?.contentType || contentType(m[2]), 'cache-control': 'public, max-age=31536000, immutable', 'x-content-type-options': 'nosniff' } });
+    }
     // /auth/oidc is SceneSpot; /auth/google, /auth/discord and the rest are social networks.
     if ((m = path.match(/^\/auth\/([a-z]{1,16})(\/callback)?$/)) && (m[1] === 'oidc' || NETWORK_IDS.includes(m[1]))) {
       if (EXTRA.includes(m[1])) return m[2] ? await extraCallback(DB, env, req, m[1]) : await extraStart(env, req, m[1]);

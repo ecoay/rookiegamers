@@ -1,4 +1,4 @@
-import { getGame, sha256, getPlayer } from './db.js';
+import { getGame, sha256, getPlayer, coverAbs } from './db.js';
 import { playNext } from './play.js';
 import { sessionPlayer } from './auth.js';
 import { bearerPlayer, cjson, json, readJSON } from './api.js';
@@ -188,7 +188,7 @@ async function adPage(DB, env, url, id) {
   const g = await getGame(DB, v.game);
   // The house ad is ready either way: it fills in when there's no sponsor or the network has nothing.
   const next = await playNext(DB, v.game, v.player_id);
-  const house = next ? { headline: next.title, blurb: next.blurb, color: next.color, image: next.cover && /^https:\/\//.test(next.cover) ? next.cover : null, click: `${siteURL(env)}/play/${next.slug}?ref=${v.game}`, cta: 'Play free' }
+  const house = next ? { headline: next.title, blurb: next.blurb, color: next.color, image: coverAbs(siteURL(env), next), click: `${siteURL(env)}/play/${next.slug}?ref=${v.game}`, cta: 'Play free' }
     : { headline: 'RookieGamers', blurb: 'Free indie web games, one account for all of them.', color: '#ff5c39', image: null, click: siteURL(env), cta: 'Open' };
   let sponsor = null;
   if (v.source === 'sponsor' && v.campaign) {

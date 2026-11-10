@@ -5,6 +5,7 @@ import { metaDeletion } from './account.js';
 import { jwks } from './tokens.js';
 import { apiV1, apiPortal, apiDev, json, CORS } from './api.js';
 import { mcp } from './mcp.js';
+import { oauthRoute } from './oauth.js';
 import { adminPage, adminSession } from './admin.js';
 import { page, notFoundPage } from './pages.js';
 import { archiveMonth } from './play.js';
@@ -80,6 +81,10 @@ async function handle(req, env, ctx) {
     if (path === '/llms-full.txt') { const games = await liveCatalog(DB); return text(LLMS_FULL_TXT.replace('{{GAMES}}', () => llmsFullGameLines(games))); }
     if (path === '/.well-known/jwks.json') return json(await jwks(DB), 200, { ...CORS, 'cache-control': 'public, max-age=300' });
     if (path === '/mcp') return mcp(req, env, DB, siteURL(env));
+    // OAuth for AI apps connecting to /mcp, and OpenAI's domain check for the ChatGPT plugin directory
+    // (OPENAI_APPS_CHALLENGE is the token the OpenAI Platform shows, set in the Cloudflare dashboard).
+    if (path.startsWith('/oauth/') || path.startsWith('/.well-known/oauth-')) { const r = await oauthRoute(req, env, DB, siteURL(env), url); if (r) return r; }
+    if (path === '/.well-known/openai-apps-challenge') return env.OPENAI_APPS_CHALLENGE ? new Response(String(env.OPENAI_APPS_CHALLENGE).trim(), { headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' } }) : new Response('Not found', { status: 404 });
     if (path.startsWith('/api/v1/') || path === '/api/v1') return await apiV1(req, env, DB, url);
     if (path.startsWith('/api/dev/games') || path.startsWith('/api/dev/payouts')) return await apiDev(req, env, DB, url);
     if (path === '/stripe/webhook') return await stripeWebhook(req, env, DB);
@@ -123,7 +128,7 @@ async function handle(req, env, ctx) {
     if (res) return res;
   } catch (e) {
     console.error(e);
-    return path.startsWith('/api/') || path === '/mcp' ? json({ error: 'Something went wrong. Try again.' }, 500) : new Response('Something went wrong.', { status: 500 });
+    return path.startsWith('/api/') || path === '/mcp' || path.startsWith('/oauth/') ? json({ error: 'Something went wrong. Try again.' }, 500) : new Response('Something went wrong.', { status: 500 });
   }
 
   const asset = await env.ASSETS.fetch(req);

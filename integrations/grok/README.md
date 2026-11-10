@@ -1,5 +1,9 @@
 # RookieGamers for Grok
 
+**Grok Build (CLI):** `grok mcp add --transport http rookiegamers https://rookiegamers.com/mcp`, then sign in with your RookieGamers developer account when the browser opens.
+
+**xAI API:** the API can't open a sign-in page, so use an API key from https://rookiegamers.com/dev.
+
 Grok connects to remote MCP servers through the xAI API. Add RookieGamers as an `mcp` tool and Grok can read the SDK docs, scaffold a game, and publish it.
 
 ```json

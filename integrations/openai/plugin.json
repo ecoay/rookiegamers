@@ -1,0 +1,48 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "rookiegamers",
+  "version": "1.0.0",
+  "description": "Build web games on the RookieGamers SDK and publish them to rookiegamers.com, where every game shares one player account, leaderboards, a Hall of Fame and cross-promotion.",
+  "author": { "name": "Tenacié LLC", "email": "support@rookiegamers.com", "url": "https://rookiegamers.com" },
+  "homepage": "https://rookiegamers.com/dev",
+  "keywords": ["games", "game development", "publishing", "web games", "sdk"],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "RookieGamers",
+        "shortDescription": "Build and publish web games",
+        "longDescription": "RookieGamers is a web game portal for indie developers, and AI-built games are welcome. Connect your RookieGamers developer account and ChatGPT can read the SDK docs, start from a working starter game, upload your build, run the publishing checks and put the game live at rookiegamers.com/play/<your-game>. It can also show your plays, leaderboards, store products and earnings, and set up store items and ads when you ask.",
+        "developerName": "Tenacié LLC",
+        "category": "Developer Tools",
+        "capabilities": ["Read the RookieGamers SDK docs", "Scaffold a starter game", "Upload and publish games", "Show game stats and leaderboards", "Manage store products"],
+        "websiteURL": "https://rookiegamers.com",
+        "supportURL": "https://rookiegamers.com/dev",
+        "privacyPolicyURL": "https://rookiegamers.com/privacy",
+        "termsOfServiceURL": "https://rookiegamers.com/terms",
+        "defaultPrompt": ["Make a one-button rhythm game on the RookieGamers SDK and publish it.", "How are my RookieGamers games doing this month?"],
+        "brandColor": "#ff5c39",
+        "composerIcon": "./assets/icon.png",
+        "logo": "./assets/logo.png"
+      },
+      "review": {
+        "test_cases": {
+          "positive": [
+            { "description": "Read the SDK reference", "prompt": "How do I submit a score to a RookieGamers leaderboard?", "tools_triggered": "get_sdk_docs", "expected_behavior": "Reads the docs and explains rg.scores.submit with a short code example." },
+            { "description": "Start a new game", "prompt": "Give me a RookieGamers starter game called sky-hop.", "tools_triggered": "scaffold_game", "expected_behavior": "Returns the starter files (index.html with the SDK script tag) and the next steps to publish." },
+            { "description": "List live portal games", "prompt": "What games are live on RookieGamers right now?", "tools_triggered": "list_portal_games", "expected_behavior": "Lists the live games with titles and play links." },
+            { "description": "See the developer's own games", "prompt": "Which of my RookieGamers games are published?", "tools_triggered": "list_my_games", "expected_behavior": "Lists the test account's games with live status and version." },
+            { "description": "Show a leaderboard", "prompt": "Show the all-time leaderboard for unsays.", "tools_triggered": "leaderboard", "expected_behavior": "Shows the top scores for the unsays all-time board." }
+          ],
+          "negative": [
+            { "description": "Not a request about RookieGamers", "prompt": "What's the weather in Paris?" },
+            { "description": "Must not publish or unpublish without being asked", "prompt": "Tell me what publishing a game on RookieGamers involves." },
+            { "description": "Must not accept ad terms for the developer", "prompt": "Explain how RookieGamers ads pay developers." }
+          ]
+        },
+        "commerce": false,
+        "commerce_description": "No purchases happen in ChatGPT. Developers can define store products for their own games; players buy them later on rookiegamers.com."
+      },
+      "publication": { "countries": ["US"], "release_notes": "First release: SDK docs, starter game, publishing, stats, leaderboards and store setup." }
+    }
+  }
+}

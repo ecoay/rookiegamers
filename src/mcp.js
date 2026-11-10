@@ -4,12 +4,15 @@ import { getGame, monthKey } from './db.js';
 import { starterFiles } from './template.js';
 import * as money from './money.js';
 import SDK_DOCS from '../docs/SDK.md';
+import { tokenPlayer, resourceMetadataURL } from './oauth.js';
 
-// A Model Context Protocol server (Streamable HTTP, stateless JSON responses) at /mcp. Claude Code,
-// Codex, Grok and any other MCP client connect with a developer API key and get the same powers as
-// the developer API: read the SDK docs, scaffold a game, upload it, publish it, and watch it.
+// A Model Context Protocol server (Streamable HTTP, stateless JSON responses) at /mcp. Claude, ChatGPT,
+// Grok, Claude Code, Codex and any other MCP client connect with OAuth (src/oauth.js) or a developer
+// API key and get the same powers as the developer API: read the SDK docs, scaffold a game, upload
+// it, publish it, and watch it. A request with no valid token gets a 401 that points at the OAuth
+// metadata, which is how the app stores' connectors start sign-in.
 
-const PROTOCOLS = ['2025-06-18', '2025-03-26', '2024-11-05'];
+const PROTOCOLS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
 const MAX_UPLOAD_CALL = 20 * 1024 * 1024;
 
 const INSTRUCTIONS = `RookieGamers is a web game portal. Every game shares one player account, leaderboards, a Hall of Fame and "play next" cross-promotion through the RookieGamers SDK (one script tag, global \`rg\`). AI-built games are welcome.
@@ -38,14 +41,14 @@ const GAME_FIELDS = {
 };
 
 const TOOLS = [
-  { name: 'get_sdk_docs', public: true, description: 'Get the RookieGamers SDK and publishing reference (markdown). Read this before writing game code.', inputSchema: { type: 'object', properties: {} },
+  { name: 'get_sdk_docs', description: 'Get the RookieGamers SDK and publishing reference (markdown). Read this before writing game code.', inputSchema: { type: 'object', properties: {} },
     run: async () => SDK_DOCS },
-  { name: 'scaffold_game', public: true, description: 'Get the files of a small, complete starter game already wired to the SDK. Write them to disk, then change the gameplay.',
+  { name: 'scaffold_game', description: 'Get the files of a small, complete starter game already wired to the SDK. Write them to disk, then change the gameplay.',
     inputSchema: { type: 'object', properties: { slug: SLUG, title: str('Display name.') }, required: ['slug'] },
     run: async (a, ctx) => ({ files: starterFiles({ slug: a.slug, title: a.title || a.slug, portal: ctx.site }), next: 'Write these files, open index.html?rg_test=1 to test, then create_game, upload_files and publish_game.' }) },
-  { name: 'list_portal_games', public: true, description: 'List the games live on RookieGamers, with playtime stats.', inputSchema: { type: 'object', properties: {} },
+  { name: 'list_portal_games', description: 'List the games live on RookieGamers, with playtime stats.', inputSchema: { type: 'object', properties: {} },
     run: async (a, ctx) => (await frontPage(ctx.DB)).map(g => ({ slug: g.slug, title: g.title, developer: g.developer, tags: g.tags, url: `${ctx.site}/play/${g.slug}`, isNew: g.isNew, plays30d: g.stats.plays })) },
-  { name: 'leaderboard', public: true, description: 'Show a game\'s leaderboard.',
+  { name: 'leaderboard', description: 'Show a game\'s leaderboard.',
     inputSchema: { type: 'object', properties: { slug: SLUG, board: { type: 'string', enum: ['monthly', 'alltime'] } }, required: ['slug'] },
     run: async (a, ctx) => {
       const g = await getGame(ctx.DB, a.slug);
@@ -104,6 +107,37 @@ const TOOLS = [
     run: async (a, ctx) => ({ ...(await money.payoutStatus(ctx.DB, ctx.pid)), setup: `${ctx.site}/dev/payouts/connect` }) },
 ];
 
+// Titles and behaviour hints for every tool. The Claude and ChatGPT directories require them: read-only
+// tools run without asking, destructive ones always ask the developer first.
+const READ = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
+const WRITE = (o = {}) => ({ readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false, ...o });
+const META = {
+  get_sdk_docs: ['Read the SDK docs', READ],
+  scaffold_game: ['Get a starter game', READ],
+  list_portal_games: ['List portal games', READ],
+  leaderboard: ['Show a leaderboard', READ],
+  list_my_games: ['List my games', READ],
+  create_game: ['Create a game listing', WRITE()],
+  update_game: ['Update a game listing', WRITE({ idempotentHint: true })],
+  upload_files: ['Upload build files', WRITE({ idempotentHint: true })],
+  publish_game: ['Publish a game', WRITE({ idempotentHint: true, openWorldHint: true })],
+  unpublish_game: ['Unpublish a game', WRITE({ destructiveHint: true, idempotentHint: true })],
+  list_builds: ['List builds', READ],
+  game_stats: ['Show game stats', READ],
+  create_server_key: ['Replace the server key', WRITE({ destructiveHint: true })],
+  set_product: ['Set a store product', WRITE({ idempotentHint: true })],
+  list_products: ['List store products', READ],
+  request_ads: ['Join the ad loop', WRITE({ destructiveHint: true, idempotentHint: true })],
+  game_money: ['Show game earnings', READ],
+  payout_status: ['Show payout status', READ],
+};
+for (const t of TOOLS) {
+  const [title, annotations] = META[t.name] || [];
+  if (!title) throw new Error(`mcp: tool ${t.name} needs a title and annotations`);
+  t.title = title;
+  t.annotations = { title, ...annotations };
+}
+
 async function myGame(ctx, slug) {
   const g = await getGame(ctx.DB, String(slug || ''));
   if (!g) throw new dev.DevError(404, `There's no game called "${slug}".`);
@@ -125,16 +159,15 @@ async function handle(msg, ctx) {
         protocolVersion: PROTOCOLS.includes(want) ? want : PROTOCOLS[0],
         capabilities: { tools: { listChanged: false } },
         serverInfo: { name: 'rookiegamers', title: 'RookieGamers', version: '1.0.0' },
-        instructions: INSTRUCTIONS + (ctx.pid ? '' : '\nNo API key was sent, so only the public tools work. Make a key at ' + ctx.site + '/dev and send it as "Authorization: Bearer rgk_...".'),
+        instructions: INSTRUCTIONS,
       });
     }
     case 'ping': return rpc(msg.id, {});
     case 'tools/list':
-      return rpc(msg.id, { tools: TOOLS.map(t => ({ name: t.name, description: t.description, inputSchema: t.inputSchema })) });
+      return rpc(msg.id, { tools: TOOLS.map(t => ({ name: t.name, title: t.title, description: t.description, inputSchema: t.inputSchema, annotations: t.annotations })) });
     case 'tools/call': {
       const tool = TOOLS.find(t => t.name === msg.params?.name);
       if (!tool) return rpcError(msg.id, -32602, `Unknown tool: ${msg.params?.name}`);
-      if (!tool.public && !ctx.pid) return rpc(msg.id, { isError: true, content: [{ type: 'text', text: `This tool needs a RookieGamers developer API key. Make one at ${ctx.site}/dev, then reconnect with the header "Authorization: Bearer rgk_...".` }] });
       try {
         const out = await tool.run(msg.params?.arguments || {}, ctx);
         return rpc(msg.id, { content: [{ type: 'text', text: typeof out === 'string' ? out : JSON.stringify(out, null, 2) }] });
@@ -151,13 +184,21 @@ async function handle(msg, ctx) {
 }
 
 export async function mcp(req, env, DB, site) {
-  const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type, mcp-protocol-version, mcp-session-id', 'access-control-allow-methods': 'POST, GET, OPTIONS' };
+  const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'authorization, content-type, mcp-protocol-version, mcp-session-id', 'access-control-allow-methods': 'POST, GET, OPTIONS', 'access-control-expose-headers': 'www-authenticate, mcp-session-id' };
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
   // Stateless server: no server-to-client stream, no sessions to end.
   if (req.method !== 'POST') return reply(rpcError(null, -32000, 'POST JSON-RPC messages to this endpoint.'), 405, { allow: 'POST', ...cors });
   let body;
   try { body = await req.json(); } catch { return reply(rpcError(null, -32700, 'Parse error'), 400, cors); }
-  const ctx = { env, DB, site, pid: await dev.keyPlayer(DB, req) };
+  const pid = await dev.keyPlayer(DB, req) || await tokenPlayer(DB, req);
+  if (!pid) {
+    // RFC 9728: tell the client where the OAuth metadata is, so it can sign the developer in.
+    const sent = !!req.headers.get('authorization');
+    const challenge = `Bearer resource_metadata="${resourceMetadataURL(site)}", scope="games"${sent ? ', error="invalid_token", error_description="The token is wrong or expired"' : ''}`;
+    return reply(rpcError(Array.isArray(body) ? null : body?.id, -32001, `Sign in to RookieGamers to use this server. AI apps do this for you with OAuth; for a key instead, make one at ${site}/dev and send "Authorization: Bearer rgk_...".`), 401,
+      { ...cors, 'www-authenticate': challenge, 'access-control-expose-headers': 'www-authenticate' });
+  }
+  const ctx = { env, DB, site, pid };
   if (Array.isArray(body)) {
     const out = (await Promise.all(body.map(m => handle(m, ctx)))).filter(Boolean);
     return out.length ? reply(out, 200, cors) : new Response(null, { status: 202, headers: cors });

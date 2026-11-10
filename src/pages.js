@@ -373,10 +373,10 @@ async function devPage(DB, req, env, url) {
   const me = await viewer(DB, req);
   const site = siteURL(env);
   const invite = url.searchParams.get('invite') || '';
-  const agents = `<h2>Publish from your AI</h2><p class="lede">Your agent reads the SDK docs, writes the game, tests it, and publishes it, all through one MCP server: <code>${esc(site)}/mcp</code>. Set <code>ROOKIEGAMERS_API_KEY</code> to a key from this page first.</p>
-<div class="agents"><div class="panel"><h3>Claude Code</h3><pre><code>/plugin marketplace add ecoay/rookiegamers
-/plugin install rookiegamers@rookiegamers</code></pre><p class="muted">Or just the MCP server:</p><pre><code>claude mcp add --transport http rookiegamers ${esc(site)}/mcp \\
-  --header "Authorization: Bearer $ROOKIEGAMERS_API_KEY"</code></pre></div>
+  const agents = `<h2>Publish from your AI</h2><p class="lede">Your agent reads the SDK docs, writes the game, tests it, and publishes it, all through one MCP server: <code>${esc(site)}/mcp</code>. Add it to your AI app and sign in with your RookieGamers account when it asks. Tools that can't open a sign-in page use an API key from this page instead.</p>
+<div class="agents"><div class="panel"><h3>Claude, ChatGPT and Grok apps</h3><p class="muted">Add a custom connector with this URL, then sign in:</p><pre><code>${esc(site)}/mcp</code></pre></div>
+<div class="panel"><h3>Claude Code</h3><pre><code>/plugin marketplace add ecoay/rookiegamers
+/plugin install rookiegamers@rookiegamers</code></pre><p class="muted">Or just the MCP server (then run <code>/mcp</code> to sign in):</p><pre><code>claude mcp add --transport http rookiegamers ${esc(site)}/mcp</code></pre></div>
 <div class="panel"><h3>Codex</h3><p class="muted">In <code>~/.codex/config.toml</code>:</p><pre><code>[mcp_servers.rookiegamers]
 url = "${esc(site)}/mcp"
 bearer_token_env_var = "ROOKIEGAMERS_API_KEY"</code></pre></div>

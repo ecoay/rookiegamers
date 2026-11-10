@@ -264,20 +264,15 @@ test('/privacy discloses advertising cookies with Google opt-out links', async (
   assert.doesNotMatch(html, /consent (banner|management|CMP)|we (show|display) a consent/i);
 });
 
-test('/mcp still answers initialize and tools/list, unaffected by the SEO routes', async () => {
+test('/mcp still answers, unaffected by the SEO routes (401 asking for sign-in without a token)', async () => {
   const env = await setup();
   const req = new Request(SITE + '/mcp', { method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } }) });
   const res = await worker.fetch(req, env, {});
-  assert.equal(res.status, 200);
-  const body = await res.json();
-  assert.equal(body.result.serverInfo.name, 'rookiegamers');
-
-  const req2 = new Request(SITE + '/mcp', { method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list' }) });
-  const res2 = await worker.fetch(req2, env, {});
-  const body2 = await res2.json();
-  assert.ok(body2.result.tools.some(t => t.name === 'list_portal_games'));
+  assert.equal(res.status, 401);
+  assert.match(res.headers.get('www-authenticate'), /resource_metadata=/);
+  const meta = await worker.fetch(new Request(SITE + '/.well-known/oauth-protected-resource/mcp'), env, {});
+  assert.equal((await meta.json()).resource, SITE + '/mcp');
 });
 
 /* ---------- review corrections: claim wording and schema logo ---------- */

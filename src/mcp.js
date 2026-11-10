@@ -16,7 +16,7 @@ const PROTOCOLS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
 const MAX_UPLOAD_CALL = 20 * 1024 * 1024;
 
 const INSTRUCTIONS = `RookieGamers is a web game portal. Every game shares one player account, leaderboards, a Hall of Fame and "play next" cross-promotion through the RookieGamers SDK (one script tag, global \`rg\`). AI-built games are welcome.
-Typical flow: get_sdk_docs, then scaffold_game (or add the SDK to an existing game), test locally with ?rg_test=1, then create_game, upload_files and publish_game. Publishing checks the build for index.html, the SDK, a viewport tag, no outside ad code and no sign-in of its own (the RookieGamers account is the only login). A developer's first game then waits for review by RookieGamers (publish_game answers pending: true); once one is approved, later games and updates go live right after the checks. list_my_games shows each game's status: live, pending, rejected (with the reason in review.note) or draft.`;
+Typical flow: get_sdk_docs, then scaffold_game (or add the SDK to an existing game), test locally with ?rg_test=1, then create_game, upload_files and publish_game. To test against the real API without touching real players, load the SDK from the staging site (https://rookiegamers-staging.ecoay.workers.dev/sdk/v1.js) and run the game on localhost; see "Staging" in get_sdk_docs. Staging hosts no files, so there use a linked game whose URL is your localhost address instead of upload_files. A developer's first game is reviewed before it goes live (publish_game answers pending: true). Credit games to a studio with save_studio and the studio field, and give each game a 16:9 cover with upload_cover. Publishing checks the build for index.html, the SDK, a viewport tag, no outside ad code and no sign-in of its own (the RookieGamers account is the only login). A developer's first game then waits for review by RookieGamers (publish_game answers pending: true); once one is approved, later games and updates go live right after the checks. list_my_games shows each game's status: live, pending, rejected (with the reason in review.note) or draft.`;
 
 const str = (description, extra = {}) => ({ type: 'string', description, ...extra });
 const SLUG = str('The game\'s slug: lowercase letters, numbers and dashes, like "sky-harvest".');
@@ -31,6 +31,7 @@ const GAME_FIELDS = {
   multiplayer: { type: 'boolean' },
   color: str('Accent color as #rrggbb.'),
   cover: str('Cover image: an https URL, or a path inside the hosted build like "cover.png".'),
+  studio: str('Slug of one of your studios (see list_studios) to credit the game to, or empty to show only your developer name.'),
   scoreLabel: str('What the score is called on boards, like "Points" or "Seconds".'),
   scoreOrder: { type: 'string', enum: ['desc', 'asc'], description: '"desc": higher is better (default). "asc": lower is better, like a race time.' },
   scoreMode: { type: 'string', enum: ['best', 'sum'], description: '"best": keep each player\'s best (default). "sum": add up points; only the game\'s server can report.' },
@@ -40,6 +41,8 @@ const GAME_FIELDS = {
   payoutWallet: str('Solana address that receives the developer\'s 40% of coin payments.'),
 };
 
+const b64 = s => { try { return Uint8Array.from(atob(String(s || '')), ch => ch.charCodeAt(0)); } catch { throw new dev.DevError(400, 'content must be base64.'); } };
+
 const TOOLS = [
   { name: 'get_sdk_docs', description: 'Get the RookieGamers SDK and publishing reference (markdown). Read this before writing game code.', inputSchema: { type: 'object', properties: {} },
     run: async () => SDK_DOCS },
@@ -47,7 +50,7 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: { slug: SLUG, title: str('Display name.') }, required: ['slug'] },
     run: async (a, ctx) => ({ files: starterFiles({ slug: a.slug, title: a.title || a.slug, portal: ctx.site }), next: 'Write these files, open index.html?rg_test=1 to test, then create_game, upload_files and publish_game.' }) },
   { name: 'list_portal_games', description: 'List the games live on RookieGamers, with playtime stats.', inputSchema: { type: 'object', properties: {} },
-    run: async (a, ctx) => (await frontPage(ctx.DB)).map(g => ({ slug: g.slug, title: g.title, developer: g.developer, tags: g.tags, url: `${ctx.site}/play/${g.slug}`, isNew: g.isNew, plays30d: g.stats.plays })) },
+    run: async (a, ctx) => (await frontPage(ctx.DB)).map(g => ({ slug: g.slug, title: g.title, developer: g.developer, studio: g.studio || null, tags: g.tags, url: `${ctx.site}/play/${g.slug}`, isNew: g.isNew, plays30d: g.stats.plays })) },
   { name: 'leaderboard', description: 'Show a game\'s leaderboard.',
     inputSchema: { type: 'object', properties: { slug: SLUG, board: { type: 'string', enum: ['monthly', 'alltime'] } }, required: ['slug'] },
     run: async (a, ctx) => {
@@ -79,6 +82,17 @@ const TOOLS = [
       for (let i = 0; i < files.length; i++) out.push(await dev.putFile(ctx.DB, ctx.env, ctx.pid, a.slug, String(a.version), String(files[i].path), bodies[i], bodies[i].byteLength));
       return { uploaded: out.length, bytes: total, files: out.map(f => f.path), next: `When every file is up, call publish_game with slug "${a.slug}" and version "${a.version}".` };
     } },
+  { name: 'upload_cover', description: 'Upload the game\'s cover art (base64 PNG, JPEG, WebP, GIF or AVIF, up to 5 MB). Covers show at 16:9, so crop to 1280 by 720 first. Replaces the current cover.',
+    inputSchema: { type: 'object', required: ['slug', 'content', 'contentType'], properties: { slug: SLUG, content: str('The image, base64 encoded.'), contentType: { type: 'string', enum: ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/avif'] } } },
+    run: async (a, ctx) => { const b = b64(a.content); return dev.putCover(ctx.DB, ctx.env, ctx.pid, a.slug, b, a.contentType, b.byteLength); } },
+  { name: 'list_studios', description: 'List your game studios.', inputSchema: { type: 'object', properties: {} },
+    run: (a, ctx) => dev.listStudios(ctx.DB, ctx.pid) },
+  { name: 'save_studio', description: 'Create a game studio, or update one of yours: name, website and about text. Its page is rookiegamers.com/studio/<slug>. Then set studio on your games with update_game.',
+    inputSchema: { type: 'object', required: ['slug'], properties: { slug: str('Studio link name: lowercase letters, numbers and dashes, like "tenacie-games".'), name: str('Studio name (needed to create one).'), url: str('Studio website (https).'), bio: str('About the studio, up to 500 characters.') } },
+    run: (a, ctx) => dev.saveStudio(ctx.DB, ctx.pid, a) },
+  { name: 'upload_studio_logo', description: 'Upload a studio\'s logo (base64 image, square, up to 5 MB). It shows next to the studio name on game pages.',
+    inputSchema: { type: 'object', required: ['slug', 'content', 'contentType'], properties: { slug: str('The studio\'s link name.'), content: str('The image, base64 encoded.'), contentType: { type: 'string', enum: ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/avif'] } } },
+    run: async (a, ctx) => { const b = b64(a.content); return dev.putStudioLogo(ctx.DB, ctx.env, ctx.pid, a.slug, b, a.contentType, b.byteLength); } },
   { name: 'publish_game', description: 'Run the publishing checks and make a build live at rookiegamers.com/play/<slug>. Linked games skip the build checks. A developer\'s first game goes to the review queue instead (pending: true) and goes live when RookieGamers approves it; later games and updates go live right away.',
     inputSchema: { type: 'object', properties: { slug: SLUG, version: str('Hosted games: the build to publish. Defaults to the latest upload.') }, required: ['slug'] },
     run: (a, ctx) => dev.publish(ctx.DB, ctx.env, ctx.pid, a.slug, a.version) },
@@ -120,6 +134,10 @@ const META = {
   create_game: ['Create a game listing', WRITE()],
   update_game: ['Update a game listing', WRITE({ idempotentHint: true })],
   upload_files: ['Upload build files', WRITE({ idempotentHint: true })],
+  upload_cover: ['Upload cover art', WRITE({ idempotentHint: true })],
+  list_studios: ['List my studios', READ],
+  save_studio: ['Save a game studio', WRITE({ idempotentHint: true })],
+  upload_studio_logo: ['Upload a studio logo', WRITE({ idempotentHint: true })],
   publish_game: ['Publish a game', WRITE({ idempotentHint: true, openWorldHint: true })],
   unpublish_game: ['Unpublish a game', WRITE({ destructiveHint: true, idempotentHint: true })],
   list_builds: ['List builds', READ],
@@ -158,7 +176,7 @@ async function handle(msg, ctx) {
       return rpc(msg.id, {
         protocolVersion: PROTOCOLS.includes(want) ? want : PROTOCOLS[0],
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: 'rookiegamers', title: 'RookieGamers', version: '1.0.0' },
+        serverInfo: { name: 'rookiegamers', title: 'RookieGamers', version: '1.1.0' },
         instructions: INSTRUCTIONS,
       });
     }

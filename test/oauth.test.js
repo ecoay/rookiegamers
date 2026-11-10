@@ -231,3 +231,16 @@ test('review sign-in: off without the secret, signs into one sandbox developer w
   await call(DB, '/oauth/review', { env: renv, method: 'POST', body: new URLSearchParams({ code: 'review-code-1234567890' }) });
   assert.equal((await DB.prepare("SELECT COUNT(*) AS n FROM identities WHERE provider = 'review'").first()).n, 1);
 });
+
+test('MCP: cover, studio and logo tools work with a developer key', async () => {
+  const { DB, pid } = await setup();
+  const key = await createKey(DB, pid, 'k');
+  const call = async (name, args) => JSON.parse((await (await mcpCall(DB, `Bearer ${key}`, 'tools/call', { name, arguments: args })).json()).result.content[0].text);
+  const names = (await (await mcpCall(DB, `Bearer ${key}`, 'tools/list')).json()).result.tools.map(t => t.name);
+  for (const n of ['upload_cover', 'list_studios', 'save_studio', 'upload_studio_logo']) assert.ok(names.includes(n), n);
+  const s = await call('save_studio', { slug: 'mcp-studio', name: 'MCP Studio', bio: 'Made from an agent.' });
+  assert.equal(s.name, 'MCP Studio');
+  assert.equal((await call('list_studios', {}))[0].slug, 'mcp-studio');
+  await call('create_game', { slug: 'mcp-game', title: 'MCP Game', kind: 'linked', url: 'https://mcp.example/' });
+  assert.equal((await call('update_game', { slug: 'mcp-game', studio: 'mcp-studio' })).studio, 'mcp-studio');
+});

@@ -97,7 +97,7 @@ async function handle(req, env, ctx) {
     if (path.startsWith('/oauth/') || path.startsWith('/.well-known/oauth-')) { const r = await oauthRoute(req, env, DB, siteURL(env), url); if (r) return r; }
     if (path === '/.well-known/openai-apps-challenge') return env.OPENAI_APPS_CHALLENGE ? new Response(String(env.OPENAI_APPS_CHALLENGE).trim(), { headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' } }) : new Response('Not found', { status: 404 });
     if (path.startsWith('/api/v1/') || path === '/api/v1') return await apiV1(req, env, DB, url);
-    if (path.startsWith('/api/dev/games') || path.startsWith('/api/dev/payouts')) return await apiDev(req, env, DB, url);
+    if (path.startsWith('/api/dev/games') || path.startsWith('/api/dev/payouts') || path.startsWith('/api/dev/studios')) return await apiDev(req, env, DB, url);
     if (path === '/stripe/webhook') return await stripeWebhook(req, env, DB);
     if (path.startsWith('/api/admin/')) {
       const tok = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');

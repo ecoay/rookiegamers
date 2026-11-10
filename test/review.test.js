@@ -267,7 +267,8 @@ test('game studios: developers make their own, credit games, and get a public st
   assert.match(await (await worker.fetch(new Request('https://rg.test/sitemap.xml'), env, {})).text(), /\/studio\/tenacie-games/);
 
   // The developer API lists your own studios; deleting one uncredits its games.
-  const res = await apiDev(new Request('https://rg.test/api/dev/studios', { headers: { authorization: 'Bearer ' + await dev.createKey(DB, bo, 'k') } }), env, DB, new URL('https://rg.test/api/dev/studios'));
+  const res = await worker.fetch(new Request('https://rg.test/api/dev/studios', { headers: { authorization: 'Bearer ' + await dev.createKey(DB, bo, 'k') } }), env, {});
+  assert.equal(res.status, 200); // routed to the developer API
   assert.deepEqual((await res.json()).studios, []);
   await dev.deleteStudio(DB, ana, 'tenacie-games');
   assert.equal((await getGame(DB, 'unsays')).studio, null);

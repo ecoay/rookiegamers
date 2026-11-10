@@ -32,6 +32,16 @@ npx wrangler r2 bucket create rookiegamers-games
 npx wrangler deploy
 ```
 
+Staging, a separate copy for developers testing games from localhost (see "Staging" in `docs/SDK.md`):
+
+```sh
+npx wrangler d1 create rookiegamers-staging          # paste the id into env.staging in wrangler.jsonc
+npx wrangler r2 bucket create rookiegamers-staging-games
+npm run deploy:staging
+```
+
+It needs no secrets. Social sign-in, payments and ads stay off there, and email sign-in shows the link on the page instead of sending it.
+
 Secrets (Workers & Pages, rookiegamers, Settings, Variables and Secrets):
 
 | Secret | For |

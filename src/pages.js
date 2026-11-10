@@ -31,7 +31,7 @@ function layout({ title, titleFull, desc, me, active, body, url, scripts = '', o
   const ogTitle = og.title || t, ogDesc = og.desc || desc || 'Play free web games from indie developers, with one account, one level and one Hall of Fame across every game.';
   const nav = [['/', 'Games'], ['/hall-of-fame', 'Hall of Fame'], ['/shop', 'Diamond Shop'], ['/dev', 'Publish'], ['/docs', 'SDK']];
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(t)}</title><meta name="description" content="${esc(desc || 'Play free web games from indie developers, with one account, one level and one Hall of Fame across every game.')}">
+<title>${esc(t)}</title><meta name="description" content="${esc(desc || 'Play free web games from indie developers, with one account, one level and one Hall of Fame across every game.')}"><meta name="google-adsense-account" content="ca-pub-8081136929405133"><meta name="google-site-verification" content="OSHWSdXxLLrQTk12-QAup0nc3IHfnccGLamcxk2hDng">
 ${robots ? `<meta name="robots" content="${esc(robots)}">` : ''}
 <meta property="og:site_name" content="RookieGamers"><meta property="og:title" content="${esc(ogTitle)}"><meta property="og:description" content="${esc(ogDesc)}"><meta property="og:type" content="website">
 ${url ? `<meta property="og:url" content="${esc(url)}">` : ''}${canonicalPath ? `<link rel="canonical" href="${esc(canonical(canonicalPath))}">` : ''}${og.image ? `<meta property="og:image" content="${esc(og.image)}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="${esc(og.image)}">` : '<meta name="twitter:card" content="summary">'}

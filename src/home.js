@@ -88,7 +88,7 @@ export function homePage({ me, games, site }) {
   const t = 'RookieGamers · Play something weird';
   const desc = 'Indie games. Instant play. Free web games from indie developers, with one account across every game.';
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${t}</title><meta name="description" content="${esc(desc)}">
+<title>${t}</title><meta name="description" content="${esc(desc)}"><meta name="google-adsense-account" content="ca-pub-8081136929405133"><meta name="google-site-verification" content="OSHWSdXxLLrQTk12-QAup0nc3IHfnccGLamcxk2hDng">
 <meta property="og:site_name" content="RookieGamers"><meta property="og:title" content="${t}"><meta property="og:description" content="${esc(desc)}"><meta property="og:type" content="website">
 <meta property="og:url" content="${esc(site)}/"><link rel="canonical" href="${esc(canonical('/'))}"><meta property="og:image" content="${esc(site)}/img/og.jpg"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="${esc(site)}/img/og.jpg">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

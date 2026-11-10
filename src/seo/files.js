@@ -8,6 +8,8 @@ Disallow: /api/
 Sitemap: https://rookiegamers.com/sitemap.xml
 `;
 
+export const ADS_TXT = 'google.com, pub-8081136929405133, DIRECT, f08c47fec0942fa0\n';
+
 export const SITEMAP_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>https://rookiegamers.com/</loc></url>

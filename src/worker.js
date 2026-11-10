@@ -10,7 +10,7 @@ import { archiveMonth } from './play.js';
 import { siteURL, contentType, previewSig } from './dev.js';
 import { stripeWebhook, moneyPage } from './money-api.js';
 import { monthlyMoney } from './money.js';
-import { ROBOTS_TXT, SITEMAP_XML, LLMS_TXT, LLMS_FULL_TXT } from './seo/files.js';
+import { ROBOTS_TXT, ADS_TXT, SITEMAP_XML, LLMS_TXT, LLMS_FULL_TXT } from './seo/files.js';
 
 // Routes for rookiegamers.com: the portal pages, the SDK API (/api/v1), the developer API
 // (/api/dev), the MCP server (/mcp), and hosted game files (on GAMES_HOST, or /hosted/ locally).
@@ -62,6 +62,7 @@ export default {
 
     try {
       if (path === '/robots.txt') return new Response(ROBOTS_TXT, { headers: { 'content-type': 'text/plain; charset=utf-8' } });
+      if (path === '/ads.txt') return new Response(ADS_TXT, { headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=3600' } });
       if (path === '/sitemap.xml') return new Response(SITEMAP_XML, { headers: { 'content-type': 'application/xml; charset=utf-8' } });
       if (path === '/llms.txt') return new Response(LLMS_TXT, { headers: { 'content-type': 'text/plain; charset=utf-8' } });
       if (path === '/llms-full.txt') return new Response(LLMS_FULL_TXT, { headers: { 'content-type': 'text/plain; charset=utf-8' } });

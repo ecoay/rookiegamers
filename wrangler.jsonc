@@ -19,8 +19,9 @@
   "triggers": { "crons": ["10 0 1 * *"] },
   // Secrets (dashboard, not here): RESEND_API_KEY, ADMIN_TOKEN, and for SceneSpot or any OpenID
   // Connect provider OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET (optional OIDC_NAME, OIDC_ID).
-  // GAMES_HOST: set to "games.rookiegamers.com" once that hostname routes to this Worker.
-  "vars": { "SITE_URL": "https://rookiegamers.com", "EMAIL_FROM": "RookieGamers <login@rookiegamers.com>", "OPEN_DEVELOPERS": "0" },
+  // GAMES_HOST: hosted games are served from their own origin (a custom domain on this Worker,
+  // attached in the dashboard like rookiegamers.com), so they get normal browser storage.
+  "vars": { "SITE_URL": "https://rookiegamers.com", "EMAIL_FROM": "RookieGamers <login@rookiegamers.com>", "OPEN_DEVELOPERS": "0", "GAMES_HOST": "games.rookiegamers.com" },
   "observability": { "enabled": true },
   // Staging: `npx wrangler deploy --env staging`. A separate copy for developers to test games
   // from localhost without touching real players or scores. Its own database and bucket:

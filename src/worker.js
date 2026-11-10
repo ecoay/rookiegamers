@@ -5,6 +5,7 @@ import { metaDeletion } from './account.js';
 import { jwks } from './tokens.js';
 import { apiV1, apiPortal, apiDev, json, CORS } from './api.js';
 import { mcp } from './mcp.js';
+import { adminPage, adminSession } from './admin.js';
 import { page, notFoundPage } from './pages.js';
 import { archiveMonth } from './play.js';
 import { siteURL, contentType, previewSig } from './dev.js';
@@ -73,11 +74,21 @@ export default {
       if (path === '/stripe/webhook') return await stripeWebhook(req, env, DB);
       if (path.startsWith('/api/admin/')) {
         const tok = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
-        if (!env.ADMIN_TOKEN || !timingSafeEqual(tok, env.ADMIN_TOKEN)) return json({ error: 'Admin only.' }, 401);
+        // The ADMIN_TOKEN (scripts, curl) or a signed-in admin on the /admin page.
+        const ok = (env.ADMIN_TOKEN && timingSafeEqual(tok, env.ADMIN_TOKEN)) || (!tok && await adminSession(DB, env, req));
+        if (!ok) return json({ error: 'Admin only.' }, 401);
         return await apiDev(req, env, DB, url, { admin: true });
       }
       if (path.startsWith('/api/')) return await apiPortal(req, env, DB, url);
       if (path === '/auth/email') return await emailVerify(DB, req);
+      if (path === '/admin') return await adminPage(DB, env, req);
+      // Uploaded cover art (src/dev.js putCover). Names are unique per upload, so they cache forever.
+      let m0;
+      if ((m0 = path.match(/^\/covers\/([a-z0-9-]{1,32})\/([a-z0-9]{12}\.(?:png|jpg|webp|gif|avif))$/))) {
+        const obj = env.GAMES && await env.GAMES.get(`_covers/${m0[1]}/${m0[2]}`);
+        if (!obj) return new Response('Not found', { status: 404 });
+        return new Response(obj.body, { headers: { 'content-type': obj.httpMetadata?.contentType || contentType(m0[2]), 'cache-control': 'public, max-age=31536000, immutable', 'x-content-type-options': 'nosniff' } });
+      }
       let m;
       // /auth/oidc is SceneSpot; /auth/google, /auth/discord and the rest are social networks.
       if ((m = path.match(/^\/auth\/([a-z]{1,16})(\/callback)?$/)) && (m[1] === 'oidc' || NETWORK_IDS.includes(m[1]))) {

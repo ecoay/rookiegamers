@@ -186,5 +186,17 @@ export function gameView(g) {
   };
 }
 
+// Where a game's cover image loads from: an https URL as given, or a file inside a hosted game's
+// live build ("cover.png" → /hosted/<slug>/cover.png). Null shows the title card instead.
+export function coverSrc(g) {
+  const c = g && g.cover;
+  if (!c) return null;
+  if (/^https:\/\//.test(c)) return c;
+  if (g.kind === 'hosted' && /^[A-Za-z0-9._\-/]{1,200}$/.test(c) && !c.includes('..')) return `/hosted/${g.slug}/${c.replace(/^\/+/, '')}`;
+  return null;
+}
+// The same as a full URL, for link previews and ads shown off the portal.
+export const coverAbs = (site, g) => { const c = coverSrc(g); return c && c.startsWith('/') ? site + c : c; };
+
 export const getGame = (DB, slug) => DB.prepare('SELECT * FROM games WHERE slug = ?').bind(slug).first();
 export async function liveGames(DB) { return (await DB.prepare('SELECT * FROM games WHERE live = 1').all()).results; }

@@ -155,6 +155,27 @@ export async function rotateServerKey(DB, pid, slug, admin = false) {
   return key;
 }
 
+/* ---------- cover art ---------- */
+
+const COVER_TYPES = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif', 'image/avif': 'avif' };
+export const MAX_COVER_BYTES = 5 * 1024 * 1024;
+
+// Upload a cover image (raw body). It's stored in R2 under _covers/ and served from /covers/ on the
+// portal, and the game's cover points at it. Each upload gets a new name, so caches never go stale.
+export async function putCover(DB, env, pid, slug, body, type, size, admin = false) {
+  if (!env.GAMES) fail(503, 'Image storage isn\'t set up (no R2 bucket bound).');
+  const g = await ownGame(DB, pid, slug, admin);
+  const ext = COVER_TYPES[String(type || '').split(';')[0].trim().toLowerCase()];
+  if (!ext) fail(415, 'Covers can be PNG, JPEG, WebP, GIF or AVIF images.');
+  if (!(size > 0)) fail(400, 'The image is empty.');
+  if (size > MAX_COVER_BYTES) fail(413, 'Covers can be up to 5 MB.');
+  const name = `${newId('', 12)}.${ext}`;
+  await env.GAMES.put(`_covers/${g.slug}/${name}`, body, { httpMetadata: { contentType: Object.keys(COVER_TYPES).find(t => COVER_TYPES[t] === ext) } });
+  const cover = `${siteURL(env)}/covers/${g.slug}/${name}`;
+  await DB.prepare('UPDATE games SET cover = ? WHERE slug = ?').bind(cover, g.slug).run();
+  return { cover };
+}
+
 /* ---------- builds ---------- */
 
 export async function putFile(DB, env, pid, slug, version, path, body, size, admin = false) {

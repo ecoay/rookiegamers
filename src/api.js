@@ -303,6 +303,10 @@ export async function apiDev(req, env, DB, url, { admin = false } = {}) {
       const len = Number.isFinite(size) && size > 0 ? size : body.byteLength;
       return json(await dev.putFile(DB, env, pid, m[1], m[2], decodeURIComponent(m[3]), body, len, admin));
     }
+    if ((m = path.match(/^\/games\/([a-z0-9-]{1,32})\/cover$/)) && method === 'PUT') {
+      const body = await req.arrayBuffer();
+      return json(await dev.putCover(DB, env, pid, m[1], body, req.headers.get('content-type'), body.byteLength, admin));
+    }
     if ((m = path.match(/^\/games\/([a-z0-9-]{1,32})\/publish$/)) && method === 'POST') {
       const r = await dev.publish(DB, env, pid, m[1], (await readJSON(req)).version, admin);
       return json(r, r.live ? 200 : r.pending ? 202 : 422);

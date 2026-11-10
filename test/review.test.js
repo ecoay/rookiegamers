@@ -15,7 +15,7 @@ function fakeR2() {
   const m = new Map();
   const obj = (k, v) => ({ key: k, size: v.body.length, body: v.body, httpMetadata: v.meta, httpEtag: '"e"', text: async () => v.body });
   return {
-    put: async (k, body, o = {}) => { m.set(k, { body: String(body), meta: o.httpMetadata || {} }); },
+    put: async (k, body, o = {}) => { m.set(k, { body: body instanceof ArrayBuffer ? new TextDecoder().decode(body) : String(body), meta: o.httpMetadata || {} }); },
     get: async k => (m.has(k) ? obj(k, m.get(k)) : null),
     head: async k => (m.has(k) ? obj(k, m.get(k)) : null),
     list: async ({ prefix }) => ({ objects: [...m].filter(([k]) => k.startsWith(prefix)).map(([k, v]) => obj(k, v)) }),
@@ -165,4 +165,62 @@ test('the signed preview link plays a waiting build, and nothing else does', asy
   assert.match(r.headers.get('content-security-policy'), /sandbox/);
   assert.equal((await get(item.previewUrl.replace(/~[a-f0-9]{4}/, '~0000'))).status, 404);
   assert.equal((await get('https://rg.test/hosted/eve-game/')).status, 404);
+});
+
+/* ---------- the /admin page ---------- */
+
+async function signedIn(DB, name) {
+  const { sha256 } = await import('../src/db.js');
+  const id = await createPlayer(DB, { name, email: `${name}@example.com` });
+  const tok = 'tok' + 'x'.repeat(30) + name;
+  await DB.prepare('INSERT INTO sessions (token, player_id, created_at) VALUES (?, ?, 0)').bind(await sha256(tok), id).run();
+  return { id, cookie: `rg_sid=${tok}` };
+}
+
+test('the admin page and its API work for listed admins only, by session', async () => {
+  const { DB, env, newDev } = await setup();
+  const admin = await signedIn(DB, 'boss'), other = await signedIn(DB, 'rando');
+  env.ADMIN_PLAYERS = `${admin.id}, pnotreal`;
+  const get = (path, cookie, init = {}) => worker.fetch(new Request('https://rg.test' + path, { ...init, headers: { cookie, ...(init.headers || {}) } }), env, {});
+
+  const page = await get('/admin', admin.cookie);
+  assert.equal(page.status, 200);
+  const text = await page.text();
+  assert.match(text, /Review queue/);
+  assert.match(text, /data-slug="unsays"/);
+  assert.equal((await get('/admin', other.cookie)).status, 403);
+  assert.equal((await get('/admin', '')).status, 302);
+
+  const json = { 'content-type': 'application/json', 'sec-fetch-site': 'same-origin' };
+  const patch = await get('/api/admin/games/unsays', admin.cookie, { method: 'PATCH', headers: json, body: JSON.stringify({ blurb: 'New blurb', featured: true }) });
+  assert.equal(patch.status, 200);
+  assert.equal((await getGame(DB, 'unsays')).blurb, 'New blurb');
+  assert.equal((await get('/api/admin/games/unsays', other.cookie, { method: 'PATCH', headers: json, body: '{}' })).status, 401);
+  // A cross-site form post can't use the admin's cookie.
+  assert.equal((await get('/api/admin/games/unsays', admin.cookie, { method: 'PATCH', headers: { ...json, 'sec-fetch-site': 'cross-site' }, body: '{}' })).status, 401);
+
+  const inv = await (await get('/api/admin/invites', admin.cookie, { method: 'POST', headers: json, body: JSON.stringify({ note: 'Chris' }) })).json();
+  assert.match(inv.invite, /^inv_/);
+});
+
+test('cover uploads are stored, served and shown, and build paths work as covers', async () => {
+  const { DB, env, newDev, upload } = await setup();
+  const admin = await signedIn(DB, 'boss2');
+  env.ADMIN_PLAYERS = admin.id;
+  const r = await worker.fetch(new Request('https://rg.test/api/admin/games/unsays/cover', { method: 'PUT', headers: { cookie: admin.cookie, 'content-type': 'image/png' }, body: 'PNGDATA' }), env, {});
+  assert.equal(r.status, 200);
+  const { cover } = await r.json();
+  assert.match(cover, /^https:\/\/rg\.test\/covers\/unsays\/[a-f0-9]{12}\.png$/);
+  const img = await worker.fetch(new Request(cover), env, {});
+  assert.equal(img.status, 200);
+  assert.equal(img.headers.get('content-type'), 'image/png');
+  assert.equal(await img.text(), 'PNGDATA');
+  const bad = await worker.fetch(new Request('https://rg.test/api/admin/games/unsays/cover', { method: 'PUT', headers: { cookie: admin.cookie, 'content-type': 'text/html' }, body: '<x>' }), env, {});
+  assert.equal(bad.status, 415);
+
+  const { coverSrc, coverAbs } = await import('../src/db.js');
+  assert.equal(coverSrc({ slug: 'yc', kind: 'hosted', cover: 'img/cover.png' }), '/hosted/yc/img/cover.png');
+  assert.equal(coverAbs('https://rg.test', { slug: 'yc', kind: 'hosted', cover: 'cover.png' }), 'https://rg.test/hosted/yc/cover.png');
+  assert.equal(coverSrc({ slug: 'yc', kind: 'hosted', cover: '../x.png' }), null);
+  assert.equal(coverSrc({ slug: 'l', kind: 'linked', cover: 'cover.png' }), null);
 });

@@ -3,6 +3,7 @@
 // pieces of art (public/img/hero.webp and web3-strip.webp) are the only images; everything else
 // is HTML and CSS. Filtering and search run in the browser over the games on the page.
 
+import { coverSrc } from './db.js';
 import { canonical, ldJSON } from './seo/site.js';
 import { FOOTER_LINKS, HOME_JSONLD } from './seo/copy.js';
 
@@ -58,7 +59,7 @@ const compact = n => (n >= 1e6 ? (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M' 
 const hex = c => (/^#[0-9a-f]{6}$/i.test(c || '') ? c : '#8f6bff');
 
 function cover(g) {
-  const img = g.cover && /^https:\/\//.test(g.cover) ? g.cover : null;
+  const img = coverSrc(g);
   const c = hex(g.color);
   // No cover yet: the title, poster-style, on the game's color.
   return `<div class="cover" style="--c:${c}">${img ? `<img src="${esc(img)}" alt="" loading="lazy">` : `<span class="poster">${esc(g.title)}</span>`}</div>`;
@@ -132,7 +133,7 @@ ${(games.some(g => g.featured) ? [CATEGORIES[0], ['featured', 'Featured', 'spark
 
 <section class="w3a" id="web3" aria-label="Web3 Arcade: onchain-enabled indie games at Rookie Gamers">
 <div class="strip"><img src="/img/web3-strip.webp" alt="Web3 Arcade. Onchain-enabled indie games at Rookie Gamers." width="2160" height="169" loading="lazy">
-<div class="w3in"><div class="thumbs">${web3.length ? web3.slice(0, 8).map(g => `<a class="th3" href="/play/${esc(g.slug)}" style="--c:${hex(g.color)}">${g.cover && /^https:\/\//.test(g.cover) ? `<img src="${esc(g.cover)}" alt="" loading="lazy">` : `<i>${esc(g.title)}</i>`}<span>${esc(g.title)}</span></a>`).join('') : '<p class="soon">Onchain games are on their way. Wallets stay optional, and are for players 18+.</p>'}</div>
+<div class="w3in"><div class="thumbs">${web3.length ? web3.slice(0, 8).map(g => `<a class="th3" href="/play/${esc(g.slug)}" style="--c:${hex(g.color)}">${coverSrc(g) ? `<img src="${esc(coverSrc(g))}" alt="" loading="lazy">` : `<i>${esc(g.title)}</i>`}<span>${esc(g.title)}</span></a>`).join('') : '<p class="soon">Onchain games are on their way. Wallets stay optional, and are for players 18+.</p>'}</div>
 <a class="b lime" href="#trending" data-goto="web3">${icon('link')}<span>Explore Web3</span>${icon('chev', 'sm')}</a></div></div>
 </section>
 

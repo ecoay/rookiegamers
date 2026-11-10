@@ -68,6 +68,10 @@ curl -X POST https://rookiegamers.com/api/admin/games/handofnine/publish -H "aut
 curl -X POST https://rookiegamers.com/api/admin/games/unsays/server-key -H "authorization: Bearer $ADMIN_TOKEN" -H 'content-type: application/json' -d '{}'
 ```
 
+### The admin page
+
+`/admin` on the site does everything below without commands: edit any game (title, blurb, tags, URL, cover upload, color, featured), publish or take down games, approve or reject first games, and make developer invites. It opens for the signed-in players listed in `ADMIN_PLAYERS` (comma-separated player ids, the `p...` part of `/u/p...`), set like the other secrets: `npx wrangler secret put ADMIN_PLAYERS`. The commands below still work with `ADMIN_TOKEN`.
+
 ### Game review
 
 A developer's first game waits for review. Once one of their games is approved, their later games and updates go live as soon as they pass the automatic checks. Games that were live before the queue existed, and their developers, are already approved. Publishing a game through the admin API puts it live and approves its developer.

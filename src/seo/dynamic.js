@@ -30,6 +30,8 @@ export const DEFAULT_OG_IMAGE = `${APEX}/img/og.jpg`;
 export function sitemapXML(games) {
   const rows = STATIC_PATHS.map(p => `  <url><loc>${APEX}${p}</loc></url>`);
   for (const g of games) rows.push(`  <url><loc>${APEX}/play/${xmlEsc(g.slug)}</loc>${g.released_at ? `<lastmod>${day(g.released_at)}</lastmod>` : ''}</url>`);
+  // Studios with at least one live game.
+  for (const st of [...new Set(games.map(g => g.studio).filter(Boolean))].sort()) rows.push(`  <url><loc>${APEX}/studio/${xmlEsc(st)}</loc></url>`);
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${rows.join('\n')}\n</urlset>\n`;
 }
 
@@ -42,7 +44,7 @@ export const llmsGameLines = games => games.map(g => `- [${oneLine(g.title)}](${
 export const llmsFullGameLines = games => games.map(g => `- ${oneLine(g.title)} (${APEX}/play/${g.slug}), by ${oneLine(g.developer)}: ${blurbOf(g)}`).join('\n');
 
 // /play/<slug>: the VideoGame is the mainEntity of a WebPage, with the BreadcrumbList on the WebPage.
-export function playJSONLD(env, g, description) {
+export function playJSONLD(env, g, description, studio = null) {
   const page = `${APEX}/play/${g.slug}`;
   const tags = safeJSON(g.tags, []).filter(t => typeof t === 'string' && t);
   const image = gameImage(env, g);
@@ -53,6 +55,7 @@ export function playJSONLD(env, g, description) {
     url: page,
     description,
     author: { '@type': 'Person', name: g.developer },
+    ...(studio ? { creator: { '@type': 'Organization', name: studio.name, url: `${APEX}/studio/${studio.slug}`, ...(studio.logo ? { logo: studio.logo } : {}) } } : {}),
     publisher: { '@id': `${APEX}/#org` },
     gamePlatform: 'Web browser',
     applicationCategory: 'Game',

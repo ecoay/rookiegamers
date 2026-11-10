@@ -224,3 +224,65 @@ test('cover uploads are stored, served and shown, and build paths work as covers
   assert.equal(coverSrc({ slug: 'yc', kind: 'hosted', cover: '../x.png' }), null);
   assert.equal(coverSrc({ slug: 'l', kind: 'linked', cover: 'cover.png' }), null);
 });
+
+test('game studios: developers make their own, credit games, and get a public studio page', async () => {
+  const { DB, env, newDev } = await setup();
+  const ana = await newDev('ana'), bo = await newDev('bo');
+  const s = await dev.saveStudio(DB, ana, { slug: 'tenacie-games', name: 'Tenacie Games', url: 'https://tenacie.example', bio: 'Weird little games.' });
+  assert.equal(s.name, 'Tenacie Games');
+  await assert.rejects(dev.saveStudio(DB, ana, { slug: 'Bad Slug!', name: 'Xavier' }), /link name/);
+  await assert.rejects(dev.saveStudio(DB, bo, { slug: 'tenacie-games', name: 'Mine now' }), /another developer/);
+  await assert.rejects(dev.saveStudio(DB, ana, { slug: 'tenacie-games', url: 'http://insecure.example' }), /https/);
+
+  // Logos upload like covers and are served from /logos/.
+  const { logo } = await dev.putStudioLogo(DB, env, ana, 'tenacie-games', 'PNGDATA', 'image/png', 7);
+  assert.match(logo, /^https:\/\/rg\.test\/logos\/tenacie-games\/[a-f0-9]{12}\.png$/);
+  const img = await worker.fetch(new Request(logo), env, {});
+  assert.equal(img.status, 200);
+  assert.equal(await img.text(), 'PNGDATA');
+
+  // Developers credit only their own games to their own studios; admins can credit any game.
+  await dev.createGame(DB, ana, { slug: 'sky-harvest', title: 'Sky Harvest', kind: 'linked', url: 'https://sky.example/' });
+  await dev.createGame(DB, bo, { slug: 'bo-game', title: 'Bo Game', kind: 'linked', url: 'https://bo.example/' });
+  assert.equal((await dev.updateGame(DB, ana, 'sky-harvest', { studio: 'tenacie-games' })).studio, 'tenacie-games');
+  await assert.rejects(dev.updateGame(DB, bo, 'bo-game', { studio: 'tenacie-games' }), /another developer/);
+  await assert.rejects(dev.updateGame(DB, ana, 'sky-harvest', { studio: 'nope' }), /no studio/);
+  assert.equal((await dev.updateGame(DB, null, 'unsays', { studio: 'tenacie-games' }, true)).studio, 'tenacie-games');
+
+  // The play page shows the studio and links to its page, which lists its live games.
+  const play = await (await worker.fetch(new Request('https://rg.test/play/unsays'), env, {})).text();
+  assert.match(play, /class="studio-by" href="\/studio\/tenacie-games"/);
+  assert.match(play, /"creator":\{"@type":"Organization","name":"Tenacie Games"/);
+  const page = await worker.fetch(new Request('https://rg.test/studio/tenacie-games'), env, {});
+  assert.equal(page.status, 200);
+  const html = await page.text();
+  assert.match(html, /<h1>Tenacie Games<\/h1>/);
+  assert.match(html, /Weird little games\./);
+  assert.match(html, /href="\/play\/unsays"/);
+  assert.doesNotMatch(html, /href="\/play\/sky-harvest"/); // not live
+  assert.equal((await worker.fetch(new Request('https://rg.test/studio/nobody'), env, {})).status, 404);
+  assert.match(await (await worker.fetch(new Request('https://rg.test/sitemap.xml'), env, {})).text(), /\/studio\/tenacie-games/);
+
+  // The developer API lists your own studios; deleting one uncredits its games.
+  const res = await apiDev(new Request('https://rg.test/api/dev/studios', { headers: { authorization: 'Bearer ' + await dev.createKey(DB, bo, 'k') } }), env, DB, new URL('https://rg.test/api/dev/studios'));
+  assert.deepEqual((await res.json()).studios, []);
+  await dev.deleteStudio(DB, ana, 'tenacie-games');
+  assert.equal((await getGame(DB, 'unsays')).studio, null);
+});
+
+test('the admin and developer pages show the studio forms, and their scripts parse', async () => {
+  const { DB, env } = await setup();
+  const { Script } = await import('node:vm');
+  const admin = await signedIn(DB, 'boss3');
+  await dev.becomeDeveloper(DB, { OPEN_DEVELOPERS: '1' }, admin.id);
+  await dev.saveStudio(DB, admin.id, { slug: 'boss-studio', name: 'Boss Studio' });
+  env.ADMIN_PLAYERS = admin.id;
+  for (const path of ['/admin', '/dev']) {
+    const html = await (await worker.fetch(new Request('https://rg.test' + path, { headers: { cookie: admin.cookie } }), env, {})).text();
+    assert.match(html, /data-studio="boss-studio"/, path);
+    assert.match(html, /id="newStudio"/, path);
+    assert.match(html, /<script src="\/crop\.js">/, path);
+    for (const [, js] of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) new Script(js); // throws on a syntax error
+  }
+  new Script((await import('node:fs')).readFileSync(new URL('../public/crop.js', import.meta.url), 'utf8'));
+});

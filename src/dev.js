@@ -116,6 +116,7 @@ export async function createGame(DB, pid, b) {
   if (n.n >= MAX_GAMES) fail(400, `Developers can have up to ${MAX_GAMES} games for now.`);
   const kind = b.kind === 'linked' ? 'linked' : 'hosted';
   const f = cleanGame({ title: b.title || slug, ...b, kind });
+  if (b.studio !== undefined) f.studio = await checkStudio(DB, pid, b.studio, false);
   if (kind === 'linked' && !f.origins) f.origins = JSON.stringify([new URL(f.url).origin]);
   const dev = await DB.prepare('SELECT name FROM developers WHERE player_id = ?').bind(pid).first();
   const cols = { slug, kind, developer: dev?.name || 'developer', owner_id: pid, live: 0, released_at: now(), created_at: now(), ...f };
@@ -126,6 +127,7 @@ export async function createGame(DB, pid, b) {
 export async function updateGame(DB, pid, slug, b, admin = false) {
   const g = await ownGame(DB, pid, slug, admin);
   const f = cleanGame(b, g);
+  if (b.studio !== undefined) f.studio = await checkStudio(DB, pid, b.studio, admin);
   if (admin && b.developer !== undefined) f.developer = cleanText(b.developer, 40);
   if (admin && b.kind !== undefined) f.kind = b.kind === 'linked' ? 'linked' : 'hosted';
   // Featuring is the portal's call, not the developer's. The most recently featured game shows first.
@@ -162,18 +164,92 @@ export const MAX_COVER_BYTES = 5 * 1024 * 1024;
 
 // Upload a cover image (raw body). It's stored in R2 under _covers/ and served from /covers/ on the
 // portal, and the game's cover points at it. Each upload gets a new name, so caches never go stale.
-export async function putCover(DB, env, pid, slug, body, type, size, admin = false) {
+// Store an uploaded image in R2 as <prefix>/<slug>/<random>.<ext> and return its file name.
+async function putImage(env, prefix, slug, body, type, size) {
   if (!env.GAMES) fail(503, 'Image storage isn\'t set up (no R2 bucket bound).');
-  const g = await ownGame(DB, pid, slug, admin);
   const ext = COVER_TYPES[String(type || '').split(';')[0].trim().toLowerCase()];
-  if (!ext) fail(415, 'Covers can be PNG, JPEG, WebP, GIF or AVIF images.');
+  if (!ext) fail(415, 'Images can be PNG, JPEG, WebP, GIF or AVIF.');
   if (!(size > 0)) fail(400, 'The image is empty.');
-  if (size > MAX_COVER_BYTES) fail(413, 'Covers can be up to 5 MB.');
+  if (size > MAX_COVER_BYTES) fail(413, 'Images can be up to 5 MB.');
   const name = `${newId('', 12)}.${ext}`;
-  await env.GAMES.put(`_covers/${g.slug}/${name}`, body, { httpMetadata: { contentType: Object.keys(COVER_TYPES).find(t => COVER_TYPES[t] === ext) } });
+  await env.GAMES.put(`${prefix}/${slug}/${name}`, body, { httpMetadata: { contentType: Object.keys(COVER_TYPES).find(t => COVER_TYPES[t] === ext) } });
+  return name;
+}
+
+export async function putCover(DB, env, pid, slug, body, type, size, admin = false) {
+  const g = await ownGame(DB, pid, slug, admin);
+  const name = await putImage(env, '_covers', g.slug, body, type, size);
   const cover = `${siteURL(env)}/covers/${g.slug}/${name}`;
   await DB.prepare('UPDATE games SET cover = ? WHERE slug = ?').bind(cover, g.slug).run();
   return { cover };
+}
+
+/* ---------- game studios ---------- */
+
+export const STUDIO_SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/;
+export const getStudio = (DB, slug) => DB.prepare('SELECT * FROM studios WHERE slug = ?').bind(String(slug || '')).first();
+export const studioView = s => s && { slug: s.slug, name: s.name, logo: s.logo || null, url: s.url || null, bio: s.bio || '', owner: s.owner_id || null };
+
+// A developer's own studios, or every studio for an admin.
+export async function listStudios(DB, pid, admin = false) {
+  const q = admin ? DB.prepare('SELECT * FROM studios ORDER BY name') : DB.prepare('SELECT * FROM studios WHERE owner_id = ? ORDER BY name').bind(pid);
+  return (await q.all()).results.map(studioView);
+}
+
+async function ownStudio(DB, pid, slug, admin) {
+  const s = await getStudio(DB, slug);
+  if (!s) fail(404, `There's no studio called "${slug}".`);
+  if (!admin && s.owner_id !== pid) fail(403, 'That studio belongs to another developer.');
+  return s;
+}
+
+// Create a studio (new slug) or update one you own: { slug, name, url, bio }.
+export async function saveStudio(DB, pid, b, admin = false) {
+  if (!admin && !await isDeveloper(DB, pid)) fail(403, 'Become a developer first.');
+  const slug = String(b.slug || '').toLowerCase().trim();
+  const f = {};
+  if (b.name !== undefined) { f.name = cleanText(b.name, 40); if (f.name.length < 2) fail(400, 'Give the studio a name of at least 2 characters.'); }
+  if (b.bio !== undefined) f.bio = cleanText(b.bio, 500);
+  if (b.url !== undefined) {
+    if (b.url && !/^https:\/\/[^\s"'<>]{1,300}$/.test(b.url)) fail(400, 'The studio website needs to be an https link.');
+    f.url = b.url || null;
+  }
+  const s = await getStudio(DB, slug);
+  if (s) {
+    await ownStudio(DB, pid, slug, admin);
+    if (Object.keys(f).length) await DB.prepare(`UPDATE studios SET ${Object.keys(f).map(k => `${k} = ?`).join(', ')} WHERE slug = ?`).bind(...Object.values(f), slug).run();
+  } else {
+    if (!STUDIO_SLUG_RE.test(slug)) fail(400, 'Pick a studio link name of lowercase letters, numbers and dashes, like "tenacie-games".');
+    if (!f.name) fail(400, 'Give the studio a name.');
+    if (!admin) {
+      const n = await DB.prepare('SELECT COUNT(*) AS n FROM studios WHERE owner_id = ?').bind(pid).first();
+      if (n.n >= 5) fail(400, 'Developers can have up to 5 studios for now.');
+    }
+    await DB.prepare('INSERT INTO studios (slug, name, owner_id, url, bio, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .bind(slug, f.name, admin ? (b.owner || pid || null) : pid, f.url ?? null, f.bio ?? '', now()).run();
+  }
+  return studioView(await getStudio(DB, slug));
+}
+
+export async function putStudioLogo(DB, env, pid, slug, body, type, size, admin = false) {
+  const s = await ownStudio(DB, pid, slug, admin);
+  const name = await putImage(env, '_logos', s.slug, body, type, size);
+  const logo = `${siteURL(env)}/logos/${s.slug}/${name}`;
+  await DB.prepare('UPDATE studios SET logo = ? WHERE slug = ?').bind(logo, s.slug).run();
+  return { logo };
+}
+
+export async function deleteStudio(DB, pid, slug, admin = false) {
+  const s = await ownStudio(DB, pid, slug, admin);
+  await DB.batch([DB.prepare('UPDATE games SET studio = NULL WHERE studio = ?').bind(s.slug), DB.prepare('DELETE FROM studios WHERE slug = ?').bind(s.slug)]);
+  return { ok: true };
+}
+
+// Credit a game to a studio. Developers can pick their own studios; admins any.
+async function checkStudio(DB, pid, studio, admin) {
+  if (!studio) return null;
+  await ownStudio(DB, pid, studio, admin);
+  return String(studio);
 }
 
 /* ---------- builds ---------- */

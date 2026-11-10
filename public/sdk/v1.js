@@ -5,7 +5,9 @@
   if (window.rg && window.rg.version) return;
 
   const SCRIPT = document.currentScript;
-  const PORTAL = SCRIPT && SCRIPT.src ? new URL(SCRIPT.src).origin : 'https://rookiegamers.com';
+  // Hosted games load /sdk/v1.js from the games host (games.rookiegamers.com); the portal is the
+  // same address without "games.".
+  const PORTAL = SCRIPT && SCRIPT.src ? (u => u.protocol + '//' + u.host.replace(/^games\./, ''))(new URL(SCRIPT.src)) : 'https://rookiegamers.com';
   const API = PORTAL + '/api/v1';
   // Loaded from the staging site (rookiegamers-staging...): test data only, never production.
   const STAGING = /(^|[.-])staging[.-]/.test(new URL(PORTAL).hostname);

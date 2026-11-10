@@ -77,6 +77,14 @@ async function handle(req, env, ctx) {
 
   // The separate games host serves hosted builds and nothing else.
   if (env.GAMES_HOST && url.hostname === env.GAMES_HOST) {
+    // Games that load the SDK with a relative "/sdk/v1.js" get the portal's copy.
+    if (path.startsWith('/sdk/')) {
+      const asset = await env.ASSETS.fetch(new Request(new URL(path, siteURL(env)), req));
+      const out = new Response(asset.body, asset);
+      out.headers.set('access-control-allow-origin', '*');
+      out.headers.set('cache-control', 'public, max-age=300');
+      return out;
+    }
     const m = path.match(/^\/([a-z0-9-]{1,32})(?:\/(.*))?$/);
     if (!m) return new Response('Not found', { status: 404 });
     if (m[2] === undefined) return Response.redirect(`${url.origin}/${m[1]}/`, 301);

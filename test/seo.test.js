@@ -332,3 +332,13 @@ test('home and a pages.js page include impact-site-verification', async () => {
   assert.match(await (await get(env, '/privacy')).text(), meta);
   assert.match(await (await get(env, '/about')).text(), meta);
 });
+
+test('the games host serves the SDK for games that load it with a relative path', async () => {
+  const seen = [];
+  const env = await setup({ GAMES_HOST: 'games.rookiegamers.com', SITE_URL: SITE, ASSETS: { fetch: async r => { seen.push(new URL(r.url).pathname); return new Response('/* sdk */', { headers: { 'content-type': 'text/javascript' } }); } } });
+  const res = await get(env, '/sdk/v1.js', 'https://games.rookiegamers.com');
+  assert.equal(res.status, 200);
+  assert.equal(await res.text(), '/* sdk */');
+  assert.equal(res.headers.get('access-control-allow-origin'), '*');
+  assert.deepEqual(seen, ['/sdk/v1.js']);
+});

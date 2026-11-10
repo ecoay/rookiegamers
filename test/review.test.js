@@ -303,6 +303,9 @@ test('staging: a banner on every page, no review wait, and localhost sign-in', a
   const r = await dev.publish(DB, env, pid, 'local-game');
   assert.equal(r.live, true); // a first game goes live on staging without review
 
+  const key = await dev.createKey(DB, pid, 'k');
+  const up = await apiDev(new Request('https://rg.test/api/dev/games/local-game/builds/1/files/index.html', { method: 'PUT', headers: { authorization: 'Bearer ' + key }, body: 'x' }), env, DB, new URL('https://rg.test/api/dev/games/local-game/builds/1/files/index.html'));
+  assert.equal(up.status, 403); // staging hosts no files
   const connect = await worker.fetch(new Request('https://rg.test/sdk/connect?game=local-game&origin=' + encodeURIComponent('http://127.0.0.1:8080')), env, {});
   assert.doesNotMatch(await connect.text(), /Can't sign in here/);
 

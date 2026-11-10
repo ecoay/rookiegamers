@@ -252,6 +252,9 @@ test('game studios: developers make their own, credit games, and get a public st
   // The play page shows the studio and links to its page, which lists its live games.
   const play = await (await worker.fetch(new Request('https://rg.test/play/unsays'), env, {})).text();
   assert.match(play, /class="studio-by" href="\/studio\/tenacie-games"/);
+  assert.match(play, /by ecoay<\/span>/); // the developer still shows beside the studio
+  const home = await (await worker.fetch(new Request('https://rg.test/'), env, {})).text();
+  assert.match(home, /class="by" href="\/studio\/tenacie-games"><img src="https:\/\/rg\.test\/logos\//);
   assert.match(play, /"creator":\{"@type":"Organization","name":"Tenacie Games"/);
   const page = await worker.fetch(new Request('https://rg.test/studio/tenacie-games'), env, {});
   assert.equal(page.status, 200);

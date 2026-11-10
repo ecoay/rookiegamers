@@ -70,10 +70,10 @@ function gameCard(g) {
   const [label, ic] = WALLET[g.wallet] || WALLET.none;
   const tags = (g.tags || []).slice(0, 3);
   const plays = g.stats?.plays || 0;
-  const hay = [g.title, g.developer, g.blurb, ...(g.tags || [])].join(' ').toLowerCase();
+  const hay = [g.title, g.developer, g.studioInfo?.name, g.blurb, ...(g.tags || [])].join(' ').toLowerCase();
   return `<article class="gc" data-tags="${esc((g.tags || []).join('|').toLowerCase())}" data-wallet="${esc(g.wallet)}" data-q="${esc(hay)}" data-new="${g.isNew ? 1 : 0}" data-featured="${g.featured ? 1 : 0}">
 <a class="hit" href="/play/${esc(g.slug)}" aria-label="Play ${esc(g.title)}"></a>${cover(g)}${g.featured ? `<span class="feat">${icon('star')}Featured</span>` : ''}<span class="badge">${icon(ic)}${label}</span>
-<div class="gb"><h3>${esc(g.title)}</h3><p>${esc(g.blurb || 'A RookieGamers original.')}</p>
+<div class="gb"><h3>${esc(g.title)}</h3>${g.studioInfo ? `<a class="by" href="/studio/${esc(g.studioInfo.slug)}">${g.studioInfo.logo ? `<img src="${esc(g.studioInfo.logo)}" alt="" loading="lazy">` : ''}<span>${esc(g.studioInfo.name)}</span></a>` : ''}<p>${esc(g.blurb || 'A RookieGamers original.')}</p>
 ${tags.length ? `<div class="tags">${tags.map(t => `<span>${esc(t.replace(/\b\w/g, m => m.toUpperCase()))}</span>`).join('')}</div>` : '<div class="tags"></div>'}
 <div class="foot">${plays ? `<span class="stat" title="Plays in the last 30 days">${icon('play')}${compact(plays)} plays</span>` : g.isNew ? '<span class="stat new">New</span>' : '<span></span>'}<a class="pn" href="/play/${esc(g.slug)}">${icon('play')}Play Now</a></div></div></article>`;
 }

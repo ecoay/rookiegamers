@@ -75,7 +75,9 @@ function boardList(rows, label) {
 /* ---------- pages ---------- */
 
 async function home(DB, req, env) {
-  const [me, games] = await Promise.all([viewer(DB, req), frontPage(DB)]);
+  const [me, games, studios] = await Promise.all([viewer(DB, req), frontPage(DB), listStudios(DB, null, true)]);
+  const byStudio = Object.fromEntries(studios.map(st => [st.slug, st]));
+  for (const g of games) g.studioInfo = byStudio[g.studio] || null;
   return html(homePage({ me, games, site: siteURL(env) }));
 }
 
@@ -129,7 +131,7 @@ async function play(DB, req, env, url, slug) {
   const more = others.filter(o => o.slug !== g.slug).slice(0, 4);
   const v = gameView(g);
   const body = `<div class="play"><div><div class="stage"><div class="gload" id="gameLoading" style="--c:${esc(g.color || '#8f6bff')}">${coverSrc(g) ? `<img src="${esc(coverSrc(g))}" alt="">` : ''}<div class="gl-in"><span class="spin" aria-hidden="true"></span><b>Loading ${esc(g.title)}...</b><span class="muted small gl-slow" hidden>Taking a while? <a href="${esc(src.href)}" target="_blank" rel="noopener">Open the game on its own</a></span></div></div><iframe id="game" onload="this.dataset.loaded=1" src="${esc(src.href)}" title="${esc(g.title)}" sandbox="${frame.sandbox}" allow="autoplay; fullscreen; gamepad; clipboard-write; screen-wake-lock" allowfullscreen></iframe></div>
-<div class="stagebar"><div><h1>${esc(g.title)}</h1>${studio ? `<a class="studio-by" href="/studio/${esc(studio.slug)}">${studioLogo(studio)}<span>${esc(studio.name)}</span></a>` : `<span class="muted">by ${esc(g.developer)}</span>`}</div><div class="acts"><button class="btn ghost small" id="soundBtn" type="button" aria-pressed="false" title="Mute or unmute the game">Sound on</button><button class="btn small" id="shareBtn" type="button">Share</button><button class="btn ghost small" id="fs" type="button">Full screen</button></div></div>
+<div class="stagebar"><div><h1>${esc(g.title)}</h1><span class="muted">by ${esc(g.developer)}</span>${studio ? ` <a class="studio-by" href="/studio/${esc(studio.slug)}">${studioLogo(studio)}<span>${esc(studio.name)}</span></a>` : ''}</div><div class="acts"><button class="btn ghost small" id="soundBtn" type="button" aria-pressed="false" title="Mute or unmute the game">Sound on</button><button class="btn small" id="shareBtn" type="button">Share</button><button class="btn ghost small" id="fs" type="button">Full screen</button></div></div>
 <p class="muted">${esc(g.blurb)}</p></div>
 <aside class="side"><div class="panel"><h3><span>${esc(g.score_label)}</span><span class="tabs"><button type="button" data-b="m" aria-pressed="true">${esc(monthLabel(monthKey()))}</button><button type="button" data-b="a" aria-pressed="false">All time</button></span></h3>
 <div id="bm">${boardList(monthly, g.score_label)}</div><div id="ba" hidden>${boardList(alltime, g.score_label)}</div></div>

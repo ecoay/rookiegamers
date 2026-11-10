@@ -12,7 +12,7 @@
   "rules": [{ "type": "Text", "globs": ["**/*.md"], "fallthrough": true }],
   // Players, sign-in, games, plays, scores and the Hall of Fame. The Worker applies its own schema.
   // Create it with `npx wrangler d1 create rookiegamers` and paste the id here.
-  "d1_databases": [{ "binding": "DB", "database_name": "rookiegamers", "database_id": "00000000-0000-0000-0000-000000000000" }],
+  "d1_databases": [{ "binding": "DB", "database_name": "rookiegamers", "database_id": "f65c4025-5367-4add-a0ab-16ea46934306" }],
   // Hosted game builds. Create it with `npx wrangler r2 bucket create rookiegamers-games`.
   "r2_buckets": [{ "binding": "GAMES", "bucket_name": "rookiegamers-games" }],
   // 00:10 UTC on the 1st: seal last month's boards into the Hall of Fame.

@@ -122,6 +122,10 @@ async function play(DB, req, env, url, slug) {
   if (!frame) return notFound(me, 'This game is still being uploaded.');
   const ref = /^[a-z0-9-]{1,32}$/.test(url.searchParams.get('ref') || '') ? url.searchParams.get('ref') : null;
   const src = new URL(frame.src);
+  // Staging only: Chrome's Local Network Access blocks a framed localhost game unless the frame
+  // is allowed to reach the loopback network (names differ across Chrome versions).
+  const loopback = env.STAGING === '1' && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(src.hostname);
+  const frameAllow = 'autoplay; fullscreen; gamepad; clipboard-write; screen-wake-lock' + (loopback ? '; local-network-access; loopback-network; local-network' : '');
   if (ref) src.searchParams.set('rg_ref', ref);
   // A multiplayer invite: the game reads the room with rg.invite.room().
   const room = /^[A-Za-z0-9_-]{1,40}$/.test(url.searchParams.get('room') || '') ? url.searchParams.get('room') : null;
@@ -130,7 +134,7 @@ async function play(DB, req, env, url, slug) {
   const studio = studioView(studioRow);
   const more = others.filter(o => o.slug !== g.slug).slice(0, 4);
   const v = gameView(g);
-  const body = `<div class="play"><div><div class="stage"><div class="gload" id="gameLoading" style="--c:${esc(g.color || '#8f6bff')}">${coverSrc(g) ? `<img src="${esc(coverSrc(g))}" alt="">` : ''}<div class="gl-in"><span class="spin" aria-hidden="true"></span><b>Loading ${esc(g.title)}...</b><span class="muted small gl-slow" hidden>Taking a while? <a href="${esc(src.href)}" target="_blank" rel="noopener">Open the game on its own</a></span></div></div><iframe id="game" onload="this.dataset.loaded=1" src="${esc(src.href)}" title="${esc(g.title)}" sandbox="${frame.sandbox}" allow="autoplay; fullscreen; gamepad; clipboard-write; screen-wake-lock" allowfullscreen></iframe></div>
+  const body = `<div class="play"><div><div class="stage"><div class="gload" id="gameLoading" style="--c:${esc(g.color || '#8f6bff')}">${coverSrc(g) ? `<img src="${esc(coverSrc(g))}" alt="">` : ''}<div class="gl-in"><span class="spin" aria-hidden="true"></span><b>Loading ${esc(g.title)}...</b><span class="muted small gl-slow" hidden>Taking a while? <a href="${esc(src.href)}" target="_blank" rel="noopener">Open the game on its own</a></span></div></div><iframe id="game" onload="this.dataset.loaded=1" src="${esc(src.href)}" title="${esc(g.title)}" sandbox="${frame.sandbox}" allow="${frameAllow}" allowfullscreen></iframe></div>
 <div class="stagebar"><div><h1>${esc(g.title)}</h1><span class="muted">by ${esc(g.developer)}</span>${studio ? ` <a class="studio-by" href="/studio/${esc(studio.slug)}">${studioLogo(studio)}<span>${esc(studio.name)}</span></a>` : ''}</div><div class="acts"><button class="btn ghost small" id="soundBtn" type="button" aria-pressed="false" title="Mute or unmute the game">Sound on</button><button class="btn small" id="shareBtn" type="button">Share</button><button class="btn ghost small" id="fs" type="button">Full screen</button></div></div>
 <p class="muted">${esc(g.blurb)}</p></div>
 <aside class="side"><div class="panel"><h3><span>${esc(g.score_label)}</span><span class="tabs"><button type="button" data-b="m" aria-pressed="true">${esc(monthLabel(monthKey()))}</button><button type="button" data-b="a" aria-pressed="false">All time</button></span></h3>

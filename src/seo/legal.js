@@ -2,7 +2,7 @@
 // and the other sign-in networks require public URLs for these before an app can go live. They
 // describe what the portal's code actually does; keep them in step when that changes.
 
-export const LEGAL_UPDATED = 'November 9, 2026';
+export const LEGAL_UPDATED = 'November 11, 2026';
 export const OPERATOR = 'Tenacié LLC';
 export const CONTACT = 'support@rookiegamers.com';
 
@@ -42,6 +42,9 @@ To run your account and sign you in, keep scores and the Hall of Fame, award gem
 - **Service providers** that run parts of the service for us: Cloudflare (hosting, database and storage), Resend (sign-in emails), Stripe (payments and developer payouts) and, when ads are on, the ad networks that serve them. They only use the data to provide their service.
 - **The network you signed in with**, which knows you used it to sign in to RookieGamers.
 - **The law.** If we're required to by law, or to protect players and the service.
+
+## Government requests
+If a public authority asks us for players' data, we check with a lawyer that the request is lawful and challenge requests that aren't. We share only the minimum the law requires, and we keep a record of each request and how we responded.
 
 ## Cookies
 We use a sign-in cookie to keep you signed in, short-lived cookies while a sign-in is in progress, and a cookie that remembers which friend's invite link brought you here (for 30 days). Your sound setting is saved in your browser. When ads are on, ad networks may set their own cookies.

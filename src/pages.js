@@ -136,13 +136,13 @@ async function play(DB, req, env, url, slug) {
   const v = gameView(g);
   const body = `<div class="play"><div><div class="stage"><div class="gload" id="gameLoading" style="--c:${esc(g.color || '#8f6bff')}">${coverSrc(g) ? `<img src="${esc(coverSrc(g))}" alt="">` : ''}<div class="gl-in"><span class="spin" aria-hidden="true"></span><b>Loading ${esc(g.title)}...</b><span class="muted small gl-slow" hidden>Taking a while? <a href="${esc(src.href)}" target="_blank" rel="noopener">Open the game on its own</a></span></div></div><iframe id="game" onload="this.dataset.loaded=1" src="${esc(src.href)}" title="${esc(g.title)}" sandbox="${frame.sandbox}" allow="${frameAllow}" allowfullscreen></iframe></div>
 <div class="stagebar"><div><h1>${esc(g.title)}</h1><span class="muted">by ${esc(g.developer)}</span>${studio ? ` <a class="studio-by" href="/studio/${esc(studio.slug)}">${studioLogo(studio)}<span>${esc(studio.name)}</span></a>` : ''}</div><div class="acts"><button class="btn ghost small" id="soundBtn" type="button" aria-pressed="false" title="Mute or unmute the game">Sound on</button><button class="btn small" id="shareBtn" type="button">Share</button><button class="btn ghost small" id="fs" type="button">Full screen</button></div></div>
-<p class="muted">${esc(g.blurb)}</p></div>
+<p class="muted">${esc(g.blurb)}</p>${g.social_accounts ? `<p class="muted small">${SOCIAL_NOTE}</p>` : ''}</div>
 <aside class="side"><div class="panel"><h3><span>${esc(g.score_label)}</span><span class="tabs"><button type="button" data-b="m" aria-pressed="true">${esc(monthLabel(monthKey()))}</button><button type="button" data-b="a" aria-pressed="false">All time</button></span></h3>
 <div id="bm">${boardList(monthly, g.score_label)}</div><div id="ba" hidden>${boardList(alltime, g.score_label)}</div></div>
 <div class="panel"><h3>Hall of Fame</h3>${hall.length ? `<ol class="board">${hall.map(h => `<li class="top${h.rank}"><span class="n">${h.rank}</span><span class="who"><a href="/u/${esc(h.player.id)}">${esc(h.player.name)}</a><small>${esc(h.monthLabel)}</small></span><span class="s">${h.score.toLocaleString('en-US')}</span></li>`).join('')}</ol>` : '<p class="muted">At the end of each month the top 3 are kept here forever and earn a title shown across RookieGamers.</p>'}</div>
 <div class="panel banner" id="rgBanner" hidden></div>
 ${more.length ? `<div class="panel"><h3>Play next</h3><div class="shelf" style="grid-template-columns:repeat(2,minmax(0,1fr))">${more.map(card).join('')}</div></div>` : ''}</aside></div>
-<dialog class="signin" id="signinDlg"><h3 style="margin-top:0">Sign in to save your scores</h3><p class="muted">One RookieGamers account works in every game.</p>
+<dialog class="signin" id="signinDlg"><h3 style="margin-top:0">Sign in to save your scores</h3><p class="muted">One RookieGamers account works in every game.</p>${g.social_accounts ? `<p class="muted small">${SOCIAL_NOTE}</p>` : ''}
 <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="dlgGo" type="button">Sign in</button><button class="btn ghost" id="dlgNo" type="button">Keep playing as a guest</button></div></dialog>
 ${shareDialog(me)}`;
   const boot = { game: v.slug, title: v.title, origins: frame.origins, ref, signedIn: !!me };
@@ -331,9 +331,21 @@ const is=document.getElementById('inviteShare');if(is&&navigator.share)is.hidden
   return html(layout({ title: pub.name, desc: `${pub.name} on RookieGamers: level ${pub.level}${pub.title ? `, ${pub.title}` : ''}. Trophies, Hall of Fame finishes and games played.`, me, body, scripts: script, url: siteURL(env) + '/u/' + pub.id, canonicalPath: '/u/' + pub.id, og: { type: 'profile' } }));
 }
 
-function signinPage(env, me, url) {
+// Shown wherever a player signs in to, links an account for, or plays a game with socialAccounts on.
+const SOCIAL_NOTE = 'This game uses the handles of the social accounts you link.';
+
+// The game a sign-in is for: ?game=, or the game in a /sdk/connect or /sdk/link next link.
+function signinGame(url, next) {
+  let slug = url.searchParams.get('game');
+  if (!slug && /^\/sdk\/(connect|link)\?/.test(next)) slug = new URL(next, url.origin).searchParams.get('game');
+  return /^[a-z0-9-]{1,32}$/.test(slug || '') ? slug : null;
+}
+
+async function signinPage(DB, env, me, url) {
   const p = providers(env);
   const next = safeNext(url.searchParams.get('next'));
+  const gameSlug = signinGame(url, next);
+  const forGame = gameSlug ? await getGame(DB, gameSlug) : null;
   const popup = url.searchParams.get('popup') === '1';
   const msg = url.searchParams.has('expired') ? '<div class="note err">That link expired or was already used. Send a new one.</div>'
     : url.searchParams.has('age') ? '<div class="note err">Tick "I\'m 13 or older" first, then pick how to sign in.</div>'
@@ -341,6 +353,7 @@ function signinPage(env, me, url) {
   const after = popup ? '/auth/done' : next;
   const featured = p.social.find(x => x.id === 'scenespot'), others = p.social.filter(x => x !== featured);
   const body = `<h1>Sign in</h1><p class="lede">One account for every game on RookieGamers: your level, scores, titles and gems follow you everywhere.</p>${msg}
+${forGame && forGame.social_accounts ? `<div class="note">${esc(forGame.title)}: ${SOCIAL_NOTE}</div>` : ''}
 ${me ? `<div class="note ok">You're signed in as ${esc(me.name)}. <a href="${esc(next)}">Continue</a></div>` : ''}
 <p class="muted">By signing in you agree to the <a href="/terms">Terms of Service</a> and <a href="/privacy">Privacy Policy</a>.</p>
 <div class="form"><label class="check"><input type="checkbox" id="age"> I'm 13 or older.</label>
@@ -376,7 +389,7 @@ async function connect(DB, req, env, url) {
   if (!g || !(origins.includes(origin) || devOrigin)) return html(layout({ me, title: 'Sign in', body: '<h1>Can\'t sign in here</h1><p class="lede">This game isn\'t set up for RookieGamers sign-in from that site.</p>' }), 400);
   if (!me) return Response.redirect(`${url.origin}/signin?next=${encodeURIComponent(url.pathname + url.search)}`, 302);
   if (url.searchParams.get('ok') !== '1') {
-    const body = `<h1>Play ${esc(g.title)} as ${esc(me.name)}?</h1><p class="lede">${esc(g.title)} will see your RookieGamers name, level and title, and can save your scores. It never sees your email or password.</p>
+    const body = `<h1>Play ${esc(g.title)} as ${esc(me.name)}?</h1><p class="lede">${esc(g.title)} will see your RookieGamers name, level and title, and can save your scores. It never sees your email or password.</p>${g.social_accounts ? `<p class="note">${SOCIAL_NOTE}</p>` : ''}
 <div style="display:flex;gap:8px"><a class="btn" href="${esc(url.pathname + url.search)}&ok=1">Continue</a><button class="btn ghost" type="button" onclick="window.close()">Cancel</button></div>`;
     return html(layout({ me, title: 'Sign in', body }));
   }
@@ -391,6 +404,42 @@ async function connect(DB, req, env, url) {
   }
   return html(`<!doctype html><meta charset="utf-8"><title>Signed in</title><body style="background:#0f0d16;color:#fff;font:16px system-ui;display:grid;place-items:center;height:100vh"><p>Signed in. Back to ${esc(g.title)}...</p>
 <script>window.opener&&window.opener.postMessage({rg:1,type:'connect',data:${data(payload)}},${data(origin)});setTimeout(()=>window.close(),300)</script>`);
+}
+
+// Linking one social network for a game built on social accounts (rg.user.link). Opened in a popup
+// by the portal frame (origin = this site) or by the game on its own site (an origin it lists).
+// Signs the player in first if needed, sends them through that network's sign-in, then hands back.
+async function linkPage(DB, req, env, url) {
+  const me = await viewer(DB, req);
+  const g = await getGame(DB, String(url.searchParams.get('game') || ''));
+  const origin = String(url.searchParams.get('origin') || '');
+  const provider = String(url.searchParams.get('provider') || '').toLowerCase();
+  const fromPortal = origin === url.origin;
+  const devOrigin = env.DEV_LOGIN === '1' && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+  const stop = msg => html(layout({ me, title: 'Link an account', body: `<h1>Can't link that here</h1><p class="lede">${msg}</p><button class="btn ghost" type="button" onclick="window.close()">Close</button>` }), 400);
+  if (!g || !(fromPortal || safeJSON(g.origins, []).includes(origin) || devOrigin)) return stop('This game isn\'t set up for RookieGamers sign-in from that site.');
+  if (!g.social_accounts) return stop(`${esc(g.title)} doesn't use social accounts.`);
+  const net = providers(env).social.find(x => x.id === provider);
+  if (!net) return stop('That network isn\'t available to link yet.');
+  const here = url.pathname + url.search.replace(/&tried=1/g, '');
+  if (!me) return Response.redirect(`${url.origin}/signin?game=${encodeURIComponent(g.slug)}&next=${encodeURIComponent(here)}`, 302);
+  const linked = await DB.prepare('SELECT 1 FROM identities WHERE player_id = ? AND provider = ?').bind(me.id, net.id).first();
+  if (!linked) {
+    const tried = url.searchParams.get('tried') === '1';
+    const body = `<h1>Link your ${esc(net.name)} account</h1><p class="lede">${esc(g.title)} plays as your ${esc(net.name)} account. Link it to your RookieGamers account to continue.</p>
+${tried ? `<div class="note err">${esc(net.name)} didn't link. Try again.</div>` : ''}<p class="note">${SOCIAL_NOTE}</p>
+<div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn" href="/auth/${esc(net.route)}?next=${encodeURIComponent(here + '&tried=1')}">Link ${esc(net.name)}</a><button class="btn ghost" type="button" onclick="window.close()">Cancel</button></div>`;
+    return html(layout({ me, title: 'Link an account', body, robots: 'noindex' }));
+  }
+  const done = msg => `<!doctype html><meta charset="utf-8"><title>Linked</title><body style="background:#0f0d16;color:#fff;font:16px system-ui;display:grid;place-items:center;height:100vh"><p>${esc(net.name)} is linked. Back to ${esc(g.title)}...</p><script>${msg};setTimeout(()=>window.close(),300)</script>`;
+  if (fromPortal) return html(done(`window.opener&&window.opener.postMessage({rg:1,type:'linked'},location.origin)`));
+  const payload = { ...await mintFor(DB, env, me.id, g.slug), game: g.slug };
+  const back = url.searchParams.get('return');
+  if (back) {
+    let b; try { b = new URL(back); } catch { b = null; }
+    if (b && b.origin === origin) return Response.redirect(`${b.origin}${b.pathname}${b.search}#rg_connect=${btoa(JSON.stringify(payload)).replace(/\+/g, '-').replace(/\//g, '_')}`, 302);
+  }
+  return html(done(`window.opener&&window.opener.postMessage({rg:1,type:'connect',data:${data(payload)}},${data(origin)})`));
 }
 
 async function devPage(DB, req, env, url) {
@@ -565,9 +614,10 @@ async function route(path, url, env, DB, req) {
   if (path === '/hall-of-fame') return hallOfFame(DB, req, env);
   if (path === '/shop') return shopPage(DB, req, env);
   if ((m = path.match(/^\/u\/(p[a-f0-9]{20})$/))) return profilePage(DB, req, env, m[1]);
-  if (path === '/signin') return signinPage(env, await viewer(DB, req), url);
+  if (path === '/signin') return signinPage(DB, env, await viewer(DB, req), url);
   if (path === '/auth/done') return authDone();
   if (path === '/sdk/connect') return connect(DB, req, env, url);
+  if (path === '/sdk/link') return linkPage(DB, req, env, url);
   if (path === '/dev') return devPage(DB, req, env, url);
   if (path === '/docs') return docs(DB, req, env);
   if (NEW_PAGES[path]) return staticPage(DB, req, env, path);

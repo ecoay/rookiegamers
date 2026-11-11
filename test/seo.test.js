@@ -199,7 +199,7 @@ test('/llms.txt and /llms-full.txt are text/plain, built from the fixtures with 
   assert.ok(t.startsWith(head) && t.endsWith(tail));
   assert.ok(!t.includes('{{GAMES}}'));
   assert.match(t, /- \[unsays\]\(https:\/\/rookiegamers\.com\/play\/unsays\): Things you can't unsay/);
-  assert.match(t, /- \[BuyYourFriends\]\(https:\/\/rookiegamers\.com\/play\/buyyourfriends\): a free web game by ecoay/);
+  assert.match(t, /- \[BuyYourFriends\]\(https:\/\/rookiegamers\.com\/play\/buyyourfriends\): Buy your friends\. A social tycoon/);
 
   const full = await get(env, '/llms-full.txt');
   assert.equal(full.status, 200);

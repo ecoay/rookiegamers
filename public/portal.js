@@ -48,7 +48,7 @@
       const onMsg = e => { if (e.origin === location.origin && e.data && e.data.rg === 1 && e.data.type === 'signed-in') finish(); };
       let poll = null;
       const open = () => {
-        const w = window.open('/signin?popup=1&next=/auth/done', 'rg_signin', 'width=460,height=680');
+        const w = window.open('/signin?popup=1&game=' + encodeURIComponent(B.game) + '&next=/auth/done', 'rg_signin', 'width=460,height=680');
         if (!w) { location.href = '/signin?next=' + encodeURIComponent(location.pathname); return; }
         window.addEventListener('message', onMsg);
         window.addEventListener('focus', check);
@@ -60,6 +60,28 @@
       dlg.showModal();
     });
     return waiting;
+  }
+
+  // Linking one social network for a game built on social accounts. /sdk/link signs the player in
+  // if needed, sends them through that network, and posts 'linked' back. Closing it answers null.
+  function link(provider) {
+    return new Promise(resolve => {
+      if (!/^[a-z0-9-]{1,32}$/.test(String(provider || ''))) return resolve(null);
+      const w = window.open('/sdk/link?game=' + encodeURIComponent(B.game) + '&provider=' + encodeURIComponent(provider) + '&origin=' + encodeURIComponent(location.origin), 'rg_link', 'width=460,height=680');
+      if (!w) return resolve(null);
+      let over = false;
+      const finish = async ok => {
+        if (over) return; over = true;
+        clearInterval(poll); window.removeEventListener('message', onMsg);
+        if (!ok) return resolve(null);
+        const a = await token();
+        if (a.user) refreshHeader(a.user);
+        resolve(a.user ? a : null);
+      };
+      const onMsg = e => { if (e.origin === location.origin && e.source === w && e.data && e.data.rg === 1 && e.data.type === 'linked') finish(true); };
+      window.addEventListener('message', onMsg);
+      const poll = setInterval(() => { if (w.closed) finish(false); }, 700);
+    });
   }
 
   // The share sheet. Signed-in players get a link that credits them with the friends it brings.
@@ -184,6 +206,7 @@
       case 'hello': ready = true; loaded(); return answer({ game: B.game, ref: B.ref, auth: await token(), muted });
       case 'token': return answer(await token());
       case 'login': return answer(await login());
+      case 'link': return answer(await link(m.data && m.data.provider));
       case 'share': return answer(await share(m.data));
       case 'ad': return answer(await showAd(m.data || {}));
       case 'game':

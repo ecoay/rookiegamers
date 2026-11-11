@@ -84,6 +84,7 @@ function cleanGame(b, existing) {
   if (b.devices !== undefined) out.devices = ['mobile', 'desktop', 'both'].includes(b.devices) ? b.devices : 'both';
   if (b.multiplayer !== undefined) out.multiplayer = b.multiplayer ? 1 : 0;
   if (b.coin !== undefined) out.coin = b.coin ? 1 : 0;
+  if (b.socialAccounts !== undefined) out.social_accounts = b.socialAccounts ? 1 : 0;
   // How a game uses wallets. 'required' puts it in the Web3 Arcade (18+ players only).
   if (b.wallet !== undefined) out.wallet = ['none', 'optional', 'required'].includes(b.wallet) ? b.wallet : null;
   if (b.payoutWallet !== undefined) {

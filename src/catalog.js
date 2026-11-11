@@ -10,9 +10,9 @@ export const SEED_GAMES = [
     score_label: 'Points', score_mode: 'sum', score_order: 'desc',
   },
   {
-    slug: 'buyyourfriends', title: 'BuyYourFriends', kind: 'linked', url: 'https://buyyoufriends.vercel.app/',
-    origins: ['https://buyyoufriends.vercel.app'], developer: 'ecoay',
-    blurb: '', tags: ['social'], color: '#3ddc97',
+    slug: 'buyyourfriends', title: 'BuyYourFriends', kind: 'linked', url: 'https://buyyourfriends.com/?rg=1',
+    origins: ['https://buyyourfriends.com'], developer: 'ecoay', social_accounts: 1,
+    blurb: 'Buy your friends. A social tycoon where real social media profiles are the market: buy friends, put them to work, snipe them from rivals, and build an empire across X, Instagram, TikTok and more.', tags: ['social'], color: '#3ddc97',
   },
   // Listed but not live until their URLs are in. Set url and origins, then publish.
   // Standalone at handofnine.com (its own Cloudflare site, RookieGamers sign-in only); the portal frames it.

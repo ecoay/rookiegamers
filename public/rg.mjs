@@ -4,6 +4,7 @@
 //   node rg.mjs create <slug> --title "My Game"       create the listing (add --linked --url https://... for your own site)
 //   node rg.mjs deploy <dir> --game <slug> [--version 1.0.1] [--no-publish]
 //   node rg.mjs publish <slug> [--version 1.0.1]
+//   node rg.mjs set <slug> --social-accounts on|off      change a setting (also --title, --blurb, --url)
 //   node rg.mjs games | stats <slug> | server-key <slug>
 // Set ROOKIEGAMERS_API_KEY (make a key at https://rookiegamers.com/dev). ROOKIEGAMERS_URL points elsewhere for testing.
 import { readFile, writeFile, readdir, stat, mkdir } from 'node:fs/promises';
@@ -17,6 +18,7 @@ for (let i = 0; i < rest.length; i++) {
   if (rest[i].startsWith('--')) { const k = rest[i].slice(2); flags[k] = rest[i + 1] && !rest[i + 1].startsWith('--') ? rest[++i] : true; } else args.push(rest[i]);
 }
 const die = msg => { console.error(msg); process.exit(1); };
+const onOff = v => (v === undefined ? undefined : v === true || /^(on|true|yes|1)$/i.test(v));
 
 async function api(method, path, body, raw) {
   if (!KEY) die(`Set ROOKIEGAMERS_API_KEY first. Make a key at ${SITE}/dev`);
@@ -53,7 +55,7 @@ if (cmd === 'init') {
   console.log(`Made ./${slug}. Open ${slug}/index.html?rg_test=1 to play it in test mode, then:\n  node rg.mjs create ${slug} --title "${flags.title || slug}"\n  node rg.mjs deploy ./${slug} --game ${slug}`);
 } else if (cmd === 'create') {
   const slug = args[0] || die('Usage: rg create <slug> --title "My Game"');
-  const body = { slug, title: flags.title || slug, blurb: flags.blurb, kind: flags.linked ? 'linked' : 'hosted', url: flags.url };
+  const body = { slug, title: flags.title || slug, blurb: flags.blurb, kind: flags.linked ? 'linked' : 'hosted', url: flags.url, socialAccounts: onOff(flags['social-accounts']) };
   const r = await api('POST', '/api/dev/games', body);
   console.log(`Created ${r.game.slug} (${r.game.kind}). ${r.game.kind === 'hosted' ? `Next: node rg.mjs deploy <dir> --game ${slug}` : `Next: node rg.mjs publish ${slug}`}`);
 } else if (cmd === 'deploy') {
@@ -73,6 +75,13 @@ if (cmd === 'init') {
   else report(await api('POST', `/api/dev/games/${slug}/publish`, { version }));
 } else if (cmd === 'publish') {
   report(await api('POST', `/api/dev/games/${args[0] || die('Usage: rg publish <slug>')}/publish`, { version: flags.version }));
+} else if (cmd === 'set') {
+  const slug = args[0] || die('Usage: rg set <slug> --social-accounts on|off');
+  const body = { title: flags.title, blurb: flags.blurb, url: flags.url, socialAccounts: onOff(flags['social-accounts']) };
+  Object.keys(body).forEach(k => body[k] === undefined && delete body[k]);
+  if (!Object.keys(body).length) die('Nothing to change. Pass --social-accounts on|off, --title, --blurb or --url.');
+  const r = await api('PATCH', `/api/dev/games/${slug}`, body);
+  console.log(`Saved ${r.game.slug}. Social accounts: ${r.game.socialAccounts ? 'on' : 'off'}.`);
 } else if (cmd === 'games') {
   for (const g of (await api('GET', '/api/dev/games')).games) console.log(`${g.slug.padEnd(24)} ${(g.status || (g.live ? 'live' : 'draft')).padEnd(8)}  ${g.kind}  ${g.version || ''}${g.status === 'rejected' && g.review?.note ? `  (${g.review.note})` : ''}`);
 } else if (cmd === 'stats') {
@@ -81,5 +90,5 @@ if (cmd === 'init') {
   const r = await api('POST', `/api/dev/games/${args[0] || die('Usage: rg server-key <slug>')}/server-key`, {});
   console.log(`Server key (shown once, keep it on your server only):\n${r.key}`);
 } else {
-  console.log(`RookieGamers CLI\n  init <slug>            starter game\n  create <slug>          create the listing\n  deploy <dir> --game s  upload and publish\n  publish <slug>         publish the latest build\n  games                  your games\n  stats <slug>           plays and playtime\n  server-key <slug>      key for trusted server scores\nDocs: ${SITE}/docs`);
+  console.log(`RookieGamers CLI\n  init <slug>            starter game\n  create <slug>          create the listing\n  deploy <dir> --game s  upload and publish\n  publish <slug>         publish the latest build\n  set <slug> --social-accounts on|off  change a setting\n  games                  your games\n  stats <slug>           plays and playtime\n  server-key <slug>      key for trusted server scores\nDocs: ${SITE}/docs`);
 }

@@ -39,9 +39,11 @@ ${g.kind === 'linked' ? field('url', 'Game URL', g.url) + field('origins', 'Allo
 ${field('color', 'Color', g.color || '#8f6bff', 'type="color"')}
 <label>Devices<select name="devices">${['both', 'desktop', 'mobile'].map(d => `<option${g.devices === d ? ' selected' : ''}>${d}</option>`).join('')}</select></label>
 <label class="chk"><input type="checkbox" name="featured"${v.featured ? ' checked' : ''}> Featured at the top of the home page</label>
+<label class="chk"><input type="checkbox" name="socialAccounts"${v.socialAccounts ? ' checked' : ''}> Built on players' social accounts (the game gets the ids and handles of the networks they link)</label>
 <div class="acts"><button class="btn" type="submit">Save</button>
+<button class="btn ghost" type="button" data-key>${v.hasServerKey ? 'New server key' : 'Make server key'}</button>
 ${g.live ? `<a class="btn ghost" href="/play/${esc(g.slug)}" target="_blank">View</a><button class="btn ghost" type="button" data-act="unpublish">Take down</button>` : `<button class="btn ghost" type="button" data-act="publish">Publish</button>`}
-<span class="msg"></span></div>
+<span class="msg"></span></div><div class="keyOut"></div>
 ${v.status === 'rejected' && v.review?.note ? `<p class="muted">Turned down: ${esc(v.review.note)}</p>` : ''}
 <p class="muted small">${g.kind === 'hosted' ? `Live build: ${esc(g.version || 'none')}. ` : ''}Created ${ago(g.created_at)}.</p>
 </form></details>`;
@@ -114,9 +116,10 @@ document.querySelectorAll('.adm[data-slug]').forEach(d=>{const slug=d.dataset.sl
  cropInto(f.coverFile,{aspect:16/9,width:1280,height:720,title:'Crop the cover (16:9)'},u=>{f.querySelector('.prev').innerHTML='<img alt="Cover">';f.querySelector('.prev img').src=u;say(msg,'New cover ready. Press Save.')});
  f.onsubmit=async e=>{e.preventDefault();const x=new FormData(f);say(msg,'Saving...');try{
   const file=f._img;if(file){await api('PUT','/games/'+slug+'/cover',file,file.type||'application/octet-stream');f._img=null}
-  const b={title:x.get('title'),developer:x.get('developer'),blurb:x.get('blurb'),tags:list(x.get('tags')||''),color:x.get('color'),devices:x.get('devices'),featured:!!x.get('featured'),studio:x.get('studio')||null};
+  const b={title:x.get('title'),developer:x.get('developer'),blurb:x.get('blurb'),tags:list(x.get('tags')||''),color:x.get('color'),devices:x.get('devices'),featured:!!x.get('featured'),socialAccounts:!!x.get('socialAccounts'),studio:x.get('studio')||null};
   if(!file)b.cover=x.get('cover')||null;if(f.url){b.url=x.get('url');b.origins=list(x.get('origins')||'')}
   await api('PATCH','/games/'+slug,b);location.reload()}catch(err){say(msg,err.message,1)}};
+ f.querySelector('[data-key]').onclick=async()=>{if(!confirm('Make a new server key for '+slug+'? Any old key stops working.'))return;say(msg,'Working...');try{const r=await api('POST','/games/'+slug+'/server-key',{});const o=f.querySelector('.keyOut');o.innerHTML='<div class="note ok">Server key (shown once, put it only on the game\\'s server): <code></code></div>';o.querySelector('code').textContent=r.key;say(msg,'')}catch(err){say(msg,err.message,1)}};
  f.querySelectorAll('[data-act]').forEach(btn=>btn.onclick=async()=>{say(msg,'Working...');try{const r=await api('POST','/games/'+slug+'/'+btn.dataset.act,{});if(r.live===false&&r.problems&&r.problems.length)say(msg,r.problems.join(' '),1);else location.reload()}catch(err){say(msg,err.message,1)}});
 });
 document.querySelectorAll('.q').forEach(q=>q.querySelectorAll('[data-review]').forEach(btn=>btn.onclick=async()=>{const msg=q.querySelector('.msg');say(msg,'Working...');try{await api('POST','/games/'+q.dataset.slug+'/review',{status:btn.dataset.review,note:q.querySelector('input').value});location.reload()}catch(err){say(msg,err.message,1)}}));

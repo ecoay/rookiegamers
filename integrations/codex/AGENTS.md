@@ -27,6 +27,7 @@ RookieGamers is a web game portal where every game shares one player account, le
 - Sound: follow the portal's mute button. Apply `rg.audio.muted()` at start and `rg.audio.onChange(muted => ...)` to every sound (master volume). It also covers ads and hidden tabs. Don't ship a separate mute that ignores it.
 - To sell things, add products with `set_product` and use `rg.store.buy(sku)`, `rg.store.unlock(sku)` (watch ads to unlock) and `rg.store.has(sku)`. Never take payments any other way: all money goes through RookieGamers, which pays the developer.
 - No sign-in of its own (Google, Firebase Auth, Supabase Auth, Auth0, Clerk...). The RookieGamers account is the only login: use `rg.user.login()` and `rg.user.token()`.
+- A game built on players' social accounts (playing as their X or TikTok account) turns on `socialAccounts`, reads `rg.user.get().social`, and calls `rg.user.link('x')` for a network that isn't linked. It never asks for social logins itself.
 - Give players a reason to share: call `rg.share({ score })` from a button after a good run. Friends who join through it earn the player gems.
 - The game must work on phones: a viewport meta tag, touch controls, and no fixed widths bigger than the screen.
 - Never put a server key (`rgs_...`) or API key (`rgk_...`) in browser code.

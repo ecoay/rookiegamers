@@ -73,8 +73,25 @@ Call first, once. `game` is your slug. `test: true` (or `?rg_test=1` in the URL)
 | `rg.user.login()` | Opens sign-in. Resolves to the player, or `null` if they closed it |
 | `rg.user.token()` | A signed player token (JWT, 15 minutes) for your game's server, or `null` |
 | `rg.user.onChange(fn)` | Calls `fn(player)` whenever the player signs in or out |
+| `rg.user.link(provider)` | Games with `socialAccounts` on: links one social network, like `"x"`. Resolves to the updated player, or `null` if they closed it |
 
 `avatar` is an image URL. `title` is a Hall of Fame title the player wears in every game, like "unsays champion · Oct 2026". Show it next to their name if you can.
+
+### Social accounts
+
+For games built on players' social accounts, like Buy Your Friends, where a player plays as their own X or TikTok account. Turn on `socialAccounts` for the game (developer API, MCP `update_game`, `node rg.mjs set <slug> --social-accounts on`, or ask the portal). It's off by default, and only games with it on ever get social account data. Players see "This game uses the handles of the social accounts you link." where they sign in, link and play.
+
+With it on, `rg.user.get()` and `rg.user.login()` include `social`, and the player token carries the same object as a `social` claim:
+
+```js
+const me = await rg.user.get();
+// me.social = { x: { id: "1449...", handle: "dana" }, scenespot: { id: "u_93..", handle: "dana" } }
+if (!me.social.x) await rg.user.link('x');   // opens X sign-in in a popup
+```
+
+Each key is a network the player linked, with its user `id` and `handle` (`null` if that network has no handle). Ids and handles only: never email addresses, tokens or anything else. Keys: `x`, `instagram`, `facebook`, `threads`, `tiktok`, `youtube`, `reddit`, `snapchat`, `linkedin`, `discord`, `twitch`, `kick`, `github`, `google`, `steam`, `telegram`, `bluesky`, and `scenespot`. `rg.user.link()` only offers networks the portal has switched on; others resolve to `null`. In test mode the fake player has `social.x`, and `link()` adds a fake account for any network.
+
+The `social` object in the token is from when the token was made. After `rg.user.link()` the SDK has a fresh token; your server reads `social` from the token, never from the browser.
 
 ### Leaderboards
 
@@ -257,7 +274,7 @@ These exist so you can wire them in now. Until they launch they resolve harmless
 If your game has a server (multiplayer, or anything that decides scores), let the server report them so nobody can post a fake score from the browser console.
 
 1. In the browser, get a token and send it to your server: `const t = await rg.user.token()`.
-2. On the server, check it against the portal's public keys at `https://rookiegamers.com/.well-known/jwks.json` (ES256). Check `iss` is `https://rookiegamers.com`, `aud` is your slug, and `exp` hasn't passed. `sub` is the player id.
+2. On the server, check it against the portal's public keys at `https://rookiegamers.com/.well-known/jwks.json` (ES256). Check `iss` is `https://rookiegamers.com`, `aud` is your slug, and `exp` hasn't passed. `sub` is the player id, and games with `socialAccounts` on also get `social` (see Social accounts).
 3. Report the score with your game's server key (make one with `rg keys server <slug>` or the `create_server_key` tool):
 
 ```http
@@ -296,7 +313,7 @@ All calls take `Authorization: Bearer rgk_...` (make a key at `rookiegamers.com/
 | Method and path | Does |
 | --- | --- |
 | `GET /api/dev/games` | Your games |
-| `POST /api/dev/games` | Create a game: `{ slug, title, kind, blurb, tags, url, origins, devices, multiplayer, scoreLabel, scoreOrder, scoreMode, maxScore, cover, color, studio }` |
+| `POST /api/dev/games` | Create a game: `{ slug, title, kind, blurb, tags, url, origins, devices, multiplayer, scoreLabel, scoreOrder, scoreMode, maxScore, cover, color, studio, socialAccounts }` |
 | `PATCH /api/dev/games/<slug>` | Change any of those fields |
 | `PUT /api/dev/games/<slug>/cover` | Upload cover art (raw PNG, JPEG, WebP, GIF or AVIF body, up to 5 MB). Covers show at 16:9, so 1280 by 720 is ideal |
 | `GET /api/dev/studios` | Your game studios |

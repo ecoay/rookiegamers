@@ -32,12 +32,29 @@ export async function bearerPlayer(DB, env, req, game) {
   return c && !c.use ? c.sub : null;
 }
 
+// The social accounts a player linked, for games built on them (games.social_accounts):
+// { x: { id, handle }, ... }. Ids and handles only: never email, tokens or anything else stored.
+const NOT_SOCIAL = new Set(['email', 'review']);
+export async function socialFor(DB, pid) {
+  const rows = (await DB.prepare('SELECT provider, subject, profile FROM identities WHERE player_id = ? ORDER BY created_at').bind(pid).all()).results;
+  const out = {};
+  for (const r of rows) {
+    if (NOT_SOCIAL.has(r.provider) || out[r.provider]) continue;
+    let handle = null;
+    try { const h = JSON.parse(r.profile || '{}').handle; if (typeof h === 'string' && h && !h.includes('@')) handle = h.slice(0, 100); } catch { /* bad profile */ }
+    out[r.provider] = { id: String(r.subject), handle };
+  }
+  return out;
+}
+
 // Mint a player token for a game. Called from the portal itself (same origin, session cookie).
 export async function mintFor(DB, env, pid, slug) {
-  const p = await getPlayer(DB, pid);
+  const [p, g] = await Promise.all([getPlayer(DB, pid), getGame(DB, slug)]);
   if (!p) return null;
   const user = { ...publicPlayer(p), gems: p.gems };
-  const token = await signToken(DB, env, { sub: pid, aud: slug, name: p.name });
+  const claims = { sub: pid, aud: slug, name: p.name };
+  if (g && g.social_accounts) user.social = claims.social = await socialFor(DB, pid);
+  const token = await signToken(DB, env, claims);
   return { token, exp: Math.floor(now() / 1000) + TOKEN_TTL, user };
 }
 

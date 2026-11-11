@@ -5,7 +5,9 @@
   if (window.rg && window.rg.version) return;
 
   const SCRIPT = document.currentScript;
-  const PORTAL = SCRIPT && SCRIPT.src ? new URL(SCRIPT.src).origin : 'https://rookiegamers.com';
+  // Hosted games load /sdk/v1.js from the games host (games.rookiegamers.com); the portal is the
+  // same address without "games.".
+  const PORTAL = SCRIPT && SCRIPT.src ? (u => u.protocol + '//' + u.host.replace(/^games\./, ''))(new URL(SCRIPT.src)) : 'https://rookiegamers.com';
   const API = PORTAL + '/api/v1';
   // Loaded from the staging site (rookiegamers-staging...): test data only, never production.
   const STAGING = /(^|[.-])staging[.-]/.test(new URL(PORTAL).hostname);
@@ -106,7 +108,7 @@
     S.game = String(opts.game || '');
     S.debug = !!opts.debug;
     if (!/^[a-z0-9-]{1,32}$/.test(S.game)) return bad('Pass your game\'s slug: rg.init({ game: "my-game" })');
-    if (opts.test || qs.get('rg_test') === '1') { S.mode = 'test'; S.test = { scores: [] }; S.user = { id: 'p_test', name: 'Test Player', avatar: null, level: 3, xp: 420, title: 'Test champion · Jan 2026', guild: null, adult: false }; log('test mode'); return ok({ mode: 'test', staging: STAGING }); }
+    if (opts.test || qs.get('rg_test') === '1') { S.mode = 'test'; S.test = { scores: [] }; S.user = { id: 'p_test', name: 'Test Player', avatar: null, level: 3, xp: 420, title: 'Test champion · Jan 2026', guild: null, adult: false, social: { x: { id: 'test-x', handle: 'testplayer' } } }; log('test mode'); return ok({ mode: 'test', staging: STAGING }); }
     if (inFrame) {
       const w = await ask('hello', { game: S.game, sdk: 1 }, 1500);
       if (w && w.game === S.game) { S.mode = 'portal'; S.ref = w.ref || S.ref; setAuth(w.auth); setMute('player', !!w.muted); log('portal mode'); return ok({ mode: 'portal', staging: STAGING }); }
@@ -177,11 +179,34 @@
     },
     async token() { await ready(); return freshToken(); },
     onChange(fn) { if (typeof fn === 'function') S.listeners.push(fn); },
+    // Games built on players' social accounts (socialAccounts on): link one network, like "x".
+    // Opens that network's sign-in in a popup; resolves to the updated player (user.social has it),
+    // or null if the player closes it.
+    async link(provider) {
+      await ready();
+      provider = String(provider || '').toLowerCase();
+      if (!/^[a-z0-9-]{1,32}$/.test(provider)) return null;
+      if (S.mode === 'test') {
+        S.user.social = S.user.social || {};
+        if (!S.user.social[provider]) S.user.social[provider] = { id: 'test-' + provider, handle: 'test_' + provider };
+        return S.user;
+      }
+      if (S.mode === 'portal') {
+        const r = await ask('link', { provider }, 15 * 60000);
+        if (!r || !r.user) return null;
+        setAuth(r); return S.user;
+      }
+      return popup(PORTAL + '/sdk/link?game=' + encodeURIComponent(S.game) + '&provider=' + encodeURIComponent(provider) + '&origin=' + encodeURIComponent(location.origin), null);
+    },
   };
 
   function popupLogin() {
+    return popup(PORTAL + '/sdk/connect?game=' + encodeURIComponent(S.game) + '&origin=' + encodeURIComponent(location.origin), undefined);
+  }
+  // A portal popup that hands back a token. closed: what to resolve if the player closes it
+  // (undefined means the current player).
+  function popup(u, closed) {
     return new Promise(resolve => {
-      const u = PORTAL + '/sdk/connect?game=' + encodeURIComponent(S.game) + '&origin=' + encodeURIComponent(location.origin);
       const w = window.open(u, 'rg_signin', 'width=440,height=640');
       if (!w) { location.href = u + '&return=' + encodeURIComponent(location.href); return; }
       const done = v => { window.removeEventListener('message', onMsg); clearInterval(poll); resolve(v); };
@@ -190,7 +215,7 @@
         setAuth(e.data.data); done(S.user);
       }
       window.addEventListener('message', onMsg);
-      const poll = setInterval(() => { if (w.closed) done(S.user || null); }, 700);
+      const poll = setInterval(() => { if (w.closed) done(closed === undefined ? S.user || null : closed); }, 700);
     });
   }
   // A full-page sign-in (popup blocked) comes back with the token in the fragment.
@@ -558,7 +583,7 @@
   };
   const wallet = { available: false, async get() { return null; } };
 
-  window.rg = { version: '1.6.0', portal: PORTAL, staging: STAGING, init, game, user, scores, friends: friendsApi, level, fame, promo, share, data, invite, store: storeApi, guild, ads, audio, wallet,
+  window.rg = { version: '1.7.0', portal: PORTAL, staging: STAGING, init, game, user, scores, friends: friendsApi, level, fame, promo, share, data, invite, store: storeApi, guild, ads, audio, wallet,
     get mode() { return S.mode; } };
   if (SCRIPT && SCRIPT.dataset.game) init({ game: SCRIPT.dataset.game });
 })();

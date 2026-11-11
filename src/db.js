@@ -110,6 +110,9 @@ const COLUMNS = [
   'ALTER TABLE games ADD COLUMN review_at INTEGER',
   // The game studio a game is credited to (studios.slug). Null shows only the developer name.
   'ALTER TABLE games ADD COLUMN studio TEXT',
+  // social_accounts: the game is built on players' social accounts (like Buy Your Friends), so its
+  // player tokens list the networks they linked (ids and handles only). Off by default.
+  'ALTER TABLE games ADD COLUMN social_accounts INTEGER NOT NULL DEFAULT 0',
 ];
 
 export async function migrate(DB) {
@@ -128,10 +131,10 @@ export async function migrate(DB) {
   await DB.prepare("UPDATE games SET kind = 'linked', url = 'https://handofnine.com/', origins = '[\"https://handofnine.com\"]' WHERE slug = 'handofnine' AND kind = 'hosted'").run();
   const t = now();
   await DB.batch(SEED_GAMES.map(g => DB.prepare(
-    `INSERT OR IGNORE INTO games (slug, title, kind, url, origins, developer, blurb, tags, color, devices, multiplayer, score_label, score_mode, score_order, max_score, live, released_at, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+    `INSERT OR IGNORE INTO games (slug, title, kind, url, origins, developer, blurb, tags, color, devices, multiplayer, score_label, score_mode, score_order, max_score, live, social_accounts, released_at, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
     g.slug, g.title, g.kind, g.url || null, JSON.stringify(g.origins || []), g.developer, g.blurb || '', JSON.stringify(g.tags || []), g.color || null,
-    g.devices || 'both', g.multiplayer ? 1 : 0, g.score_label || 'Score', g.score_mode || 'best', g.score_order || 'desc', g.max_score ?? null, g.live === false || !g.url ? 0 : 1, t, t)));
+    g.devices || 'both', g.multiplayer ? 1 : 0, g.score_label || 'Score', g.score_mode || 'best', g.score_order || 'desc', g.max_score ?? null, g.live === false || !g.url ? 0 : 1, g.social_accounts ? 1 : 0, t, t)));
 }
 
 let ready = null;
@@ -188,7 +191,7 @@ export function gameView(g) {
   return {
     slug: g.slug, title: g.title, kind: g.kind, url: g.url, origins: safeJSON(g.origins, []), developer: g.developer, blurb: g.blurb,
     tags: safeJSON(g.tags, []), cover: g.cover, color: g.color, devices: g.devices, multiplayer: !!g.multiplayer,
-    studio: g.studio || null, scoreLabel: g.score_label, scoreMode: g.score_mode, scoreOrder: g.score_order, coin: !!g.coin, wallet: g.wallet || (g.coin ? 'optional' : 'none'), featured: !!g.featured_at, releasedAt: g.released_at,
+    studio: g.studio || null, scoreLabel: g.score_label, scoreMode: g.score_mode, scoreOrder: g.score_order, coin: !!g.coin, socialAccounts: !!g.social_accounts, wallet: g.wallet || (g.coin ? 'optional' : 'none'), featured: !!g.featured_at, releasedAt: g.released_at,
   };
 }
 

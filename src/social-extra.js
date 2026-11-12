@@ -79,7 +79,7 @@ function telegramStart(env, req) {
   const url = new URL(req.url);
   const { cookie } = stashCookie(req, url, 'telegram');
   const bot = String(env.TELEGRAM_BOT_NAME || '').replace(/[^A-Za-z0-9_]/g, '');
-  const page = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Sign in with Telegram · RookieGamers</title>
+  const page = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="impact-site-verification" value="c1bf013b-98e9-4301-81d1-32679b2d3b60"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Sign in with Telegram · RookieGamers</title>
 <link rel="stylesheet" href="/site.css"></head><body><main style="max-width:420px;margin:12vh auto;text-align:center;padding:0 16px"><h1>Sign in with Telegram</h1>
 <p class="muted">Confirm in Telegram, and you'll come straight back.</p>
 <script async src="https://telegram.org/js/telegram-widget.js?22" data-telegram-login="${bot}" data-size="large" data-auth-url="${url.origin}/auth/telegram/callback" data-request-access="write"></script>

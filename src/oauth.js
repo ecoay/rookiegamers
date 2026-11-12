@@ -138,7 +138,7 @@ async function getClient(DB, id) {
 /* ---------- authorize ---------- */
 
 function page(title, body, status = 200) {
-  return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="impact-site-verification" value="c1bf013b-98e9-4301-81d1-32679b2d3b60"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)} · RookieGamers</title><meta name="robots" content="noindex"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/site.css"></head><body>
 <header class="top"><div class="wrap"><a class="logo" href="/"><b>RG</b>RookieGamers</a></div></header>
 <main><div class="wrap" style="max-width:560px">${body}</div></main></body></html>`,

@@ -207,7 +207,7 @@ async function adPage(DB, env, url, id) {
   const net = v.source === 'network' && D.client
     ? `<script async ${D.test ? 'data-adbreak-test="on" ' : ''}data-ad-frequency-hint="30s" src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${esc(D.client)}" crossorigin="anonymous"></script>`
     : '';
-  return html(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Ad</title>${net}
+  return html(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="impact-site-verification" value="c1bf013b-98e9-4301-81d1-32679b2d3b60"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Ad</title>${net}
 <style>*{box-sizing:border-box}html,body{margin:0;height:100%;background:rgba(8,6,14,.94);color:#fff;font:15px/1.45 system-ui,-apple-system,sans-serif}
 .bar{position:fixed;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:center;padding:12px 16px;gap:12px}
 .tag{font-size:11px;letter-spacing:.08em;text-transform:uppercase;background:rgba(255,255,255,.14);padding:3px 8px;border-radius:6px}
@@ -240,7 +240,7 @@ else{show(D.creative);clock(D.ms)}})()</script></body></html>`);
 
 function storeDone(url) {
   const cancel = url.searchParams.get('cancel') === '1';
-  return html(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${cancel ? 'Checkout cancelled' : 'Thanks!'}</title>
+  return html(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="impact-site-verification" value="c1bf013b-98e9-4301-81d1-32679b2d3b60"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${cancel ? 'Checkout cancelled' : 'Thanks!'}</title>
 <style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0f0d16;color:#fff;font:16px/1.5 system-ui,sans-serif;text-align:center;padding:16px}</style></head>
 <body><div><h1>${cancel ? 'Checkout cancelled' : 'Thanks for your purchase!'}</h1><p>${cancel ? 'Nothing was charged.' : 'It\'s on its way to the game.'} You can close this window.</p></div>
 <script>try{if(window.opener)window.opener.postMessage({rg:1,type:'purchase',data:{order:${inline(url.searchParams.get('order') || '')},cancelled:${cancel}}},'*')}catch(e){}setTimeout(function(){window.close()},${cancel ? 1200 : 2500})</script></body></html>`);

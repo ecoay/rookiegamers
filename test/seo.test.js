@@ -6,6 +6,8 @@ import { migrate } from '../src/db.js';
 import { ABOUT_PAGE, CREATORS_PAGE, AI_PAGE, FAQ_PAGE, FOOTER_LINKS } from '../src/seo/copy.js';
 import { ROBOTS_TXT, LLMS_TXT, LLMS_FULL_TXT } from '../src/seo/files.js';
 import { STATIC_PATHS, adsTxt } from '../src/seo/dynamic.js';
+import { createPlayer, sha256, getGame } from '../src/db.js';
+import { createShare } from '../src/growth.js';
 
 // worker.js transitively imports docs/SDK.md (Wrangler's Text rule); give plain Node the same rule.
 register('./md-loader.mjs', import.meta.url);
@@ -341,4 +343,183 @@ test('the games host serves the SDK for games that load it with a relative path'
   assert.equal(await res.text(), '/* sdk */');
   assert.equal(res.headers.get('access-control-allow-origin'), '*');
   assert.deepEqual(seen, ['/sdk/v1.js']);
+});
+
+/* ---------- Google Analytics 4 on public HTML pages only ---------- */
+
+const GA_SCRIPT = /<script async src="https:\/\/www\.googletagmanager\.com\/gtag\/js\?id=G-K05JD2HSXT"><\/script>/;
+const GA_INLINE = /window\.dataLayer = window\.dataLayer \|\| \[\]; function gtag\(\)\{dataLayer\.push\(arguments\);\} gtag\('js', new Date\(\)\); gtag\('config', 'G-K05JD2HSXT'\);/;
+const GA_ID = /G-K05JD2HSXT/;
+function assertGa4Head(html, label) {
+  assert.match(html, GA_SCRIPT, label);
+  assert.match(html, GA_INLINE, label);
+  const head = html.match(/<head[\s\S]*?<\/head>/i);
+  assert.ok(head, label + ' has a head');
+  assert.match(head[0], GA_SCRIPT, label + ' snippet is in <head>');
+}
+
+const GA_LAYOUT_PATHS = [
+  '/', '/about', '/creators', '/ai', '/faq', '/dev', '/docs', '/hall-of-fame', '/shop',
+  '/privacy', '/terms', '/data-deletion', '/play/unsays',
+];
+
+test('GA4 snippet is in the head of every listed public HTML page and other layout pages', async () => {
+  const env = await setup();
+  await env.DB.prepare('INSERT INTO studios (slug, name, owner_id, logo, url, bio, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .bind('acme', 'Acme Studio', null, null, null, 'A test studio.', 0).run();
+  const paths = [...GA_LAYOUT_PATHS, '/studio/acme'];
+  for (const path of paths) {
+    const res = await get(env, path);
+    assert.equal(res.status, 200, path);
+    assert.match(res.headers.get('content-type') || '', /text\/html/, path);
+    assertGa4Head(await res.text(), path);
+  }
+});
+
+test('/play/* has GA4 on the outer portal page only, not inside the game iframe element', async () => {
+  const env = await setup();
+  const html = await (await get(env, '/play/unsays')).text();
+  assertGa4Head(html, '/play/unsays');
+  const iframe = html.match(/<iframe\b[^>]*>/i);
+  assert.ok(iframe, 'play page frames the game');
+  assert.doesNotMatch(iframe[0], GA_ID);
+  assert.match(iframe[0], /src="https:\/\/unsays\.com\/\?rg=1"/);
+  const headEnd = html.indexOf('</head>');
+  const iframeAt = html.indexOf('<iframe');
+  assert.ok(headEnd !== -1 && iframeAt > headEnd, 'gtag is in the portal head, iframe is in the body');
+});
+
+test('hosted game files and the games host do not receive the GA4 snippet', async () => {
+  const gameHtml = '<!doctype html><html><head><title>Dodge</title></head><body><p>play</p></body></html>';
+  const files = new Map();
+  const GAMES = {
+    get: async k => {
+      if (!files.has(k)) return null;
+      const body = files.get(k);
+      return { body, httpMetadata: { contentType: 'text/html; charset=utf-8' }, httpEtag: '"g"' };
+    },
+  };
+  files.set('dodge/1.0.0/index.html', gameHtml);
+  const env = await setup({ GAMES, GAMES_HOST: 'games.rookiegamers.com' });
+  await env.DB.prepare(`INSERT INTO games (slug, title, kind, developer, live, version, released_at, created_at) VALUES ('dodge', 'Dodge', 'hosted', 'me', 1, '1.0.0', 0, 0)`).run();
+
+  const play = await get(env, '/play/dodge');
+  assert.equal(play.status, 200);
+  const playHtml = await play.text();
+  assertGa4Head(playHtml, '/play/dodge');
+  assert.match(playHtml, /<iframe\b[^>]*src="https:\/\/games\.rookiegamers\.com\/dodge\/"/);
+
+  const hosted = await get(env, '/hosted/dodge/');
+  assert.equal(hosted.status, 200);
+  const hostedBody = await hosted.text();
+  assert.equal(hostedBody, gameHtml);
+  assert.doesNotMatch(hostedBody, GA_ID);
+  assert.match(hosted.headers.get('content-security-policy') || '', /sandbox/);
+
+  const origin = await get(env, '/dodge/', 'https://games.rookiegamers.com');
+  assert.equal(origin.status, 200);
+  const originBody = await origin.text();
+  assert.equal(originBody, gameHtml);
+  assert.doesNotMatch(originBody, GA_ID);
+  assert.equal(origin.headers.get('content-security-policy'), null);
+});
+
+test('GA4 is not injected into /mcp, /api or /sdk responses', async () => {
+  const env = await setup({
+    ASSETS: { fetch: async () => new Response('/* sdk */', { headers: { 'content-type': 'text/javascript; charset=utf-8' } }) },
+  });
+
+  const mcp = await worker.fetch(new Request(SITE + '/mcp', { method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } }) }), env, {});
+  assert.equal(mcp.status, 401);
+  assert.doesNotMatch(mcp.headers.get('content-type') || '', /text\/html/);
+  assert.doesNotMatch(await mcp.text(), GA_ID);
+
+  const api = await get(env, '/api/v1/games');
+  assert.equal(api.status, 200);
+  assert.match(api.headers.get('content-type') || '', /json/);
+  assert.doesNotMatch(await api.text(), GA_ID);
+
+  const sdk = await get(env, '/sdk/v1.js');
+  assert.equal(sdk.status, 200);
+  const sdkBody = await sdk.text();
+  assert.equal(sdkBody, '/* sdk */');
+  assert.doesNotMatch(sdkBody, GA_ID);
+});
+
+test('/privacy describes Google Analytics honestly, keeps Advertising, and makes no consent-tool claim', async () => {
+  const env = await setup();
+  const html = await (await get(env, '/privacy')).text();
+  assertGa4Head(html, '/privacy');
+  assert.match(html, /<h2 id="analytics">Analytics<\/h2>/);
+  assert.match(html, /Google Analytics to measure aggregate traffic/);
+  assert.match(html, /pages visited/);
+  assert.match(html, /device and browser information/);
+  assert.match(html, /approximate location/);
+  assert.match(html, /href="https:\/\/policies\.google\.com\/technologies\/partner-sites"/);
+  assert.match(html, /href="https:\/\/tools\.google\.com\/dlpage\/gaoptout"/);
+  assert.match(html, /<h2 id="advertising">Advertising<\/h2>/);
+  assert.match(html, /href="https:\/\/www\.google\.com\/settings\/ads"/);
+  assert.match(html, /href="https:\/\/www\.aboutads\.info\/choices\/"/);
+  assert.doesNotMatch(html, /consent (banner|management|CMP)|we (show|display) a consent/i);
+});
+
+test('public HTML pages have no script-src CSP that would require a nonce or hash for the GA4 inline script', async () => {
+  const env = await setup();
+  for (const path of ['/', '/privacy', '/play/unsays']) {
+    const res = await get(env, path);
+    assert.equal(res.status, 200, path);
+    const csp = res.headers.get('content-security-policy') || '';
+    assert.doesNotMatch(csp, /script-src/, path);
+    assertGa4Head(await res.text(), path);
+  }
+});
+
+test('GA4 is absent from /admin, /signin, /oauth/authorize, /auth/telegram, /sdk/connect and /sdk/link', async () => {
+  const env = await setup({ TELEGRAM_BOT_NAME: 'rg_bot' });
+  const noGa = async (path, status, req = path) => {
+    const res = typeof req === 'string' ? await get(env, req) : req;
+    assert.equal(res.status, status, path);
+    assert.match(res.headers.get('content-type') || '', /text\/html/, path);
+    assert.doesNotMatch(await res.text(), GA_ID, path);
+  };
+  await noGa('/signin', 200);
+  await noGa('/oauth/authorize', 400);
+  await noGa('/auth/telegram', 200, await get(env, '/auth/telegram'));
+  await noGa('/sdk/connect', 400);
+  await noGa('/sdk/link', 400);
+
+  const { sha256: hash } = { sha256 };
+  async function session(name) {
+    const id = await createPlayer(env.DB, { name, email: `${name}@example.com` });
+    const tok = 'tok' + 'x'.repeat(30) + name;
+    await env.DB.prepare('INSERT INTO sessions (token, player_id, created_at) VALUES (?, ?, 0)').bind(await hash(tok), id).run();
+    return { id, cookie: `rg_sid=${tok}` };
+  }
+  const player = await session('pat');
+  const forbidden = await worker.fetch(new Request(SITE + '/admin', { headers: { cookie: player.cookie } }), env, {});
+  await noGa('/admin (not admin)', 403, forbidden);
+
+  const admin = await session('ada');
+  env.ADMIN_PLAYERS = admin.id;
+  const ok = await worker.fetch(new Request(SITE + '/admin', { headers: { cookie: admin.cookie } }), env, {});
+  await noGa('/admin', 200, ok);
+});
+
+test('GA4 stays on /u/*, /s/* and the 404 page', async () => {
+  const env = await setup();
+  const id = await createPlayer(env.DB, { name: 'sam', email: 'sam@example.com' });
+  const profile = await get(env, '/u/' + id);
+  assert.equal(profile.status, 200);
+  assertGa4Head(await profile.text(), '/u/' + id);
+
+  const g = await getGame(env.DB, 'unsays');
+  const share = await createShare(env.DB, SITE, g, id, { score: 10 });
+  const page = await get(env, '/s/' + share.id);
+  assert.equal(page.status, 200);
+  assertGa4Head(await page.text(), '/s/' + share.id);
+
+  const missing = await get(env, '/this-page-does-not-exist');
+  assert.equal(missing.status, 404);
+  assertGa4Head(await missing.text(), '404');
 });

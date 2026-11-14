@@ -8,7 +8,7 @@ import { devMoneySection } from './money-api.js';
 import SDK_DOCS from '../docs/SDK.md';
 import { homePage } from './home.js';
 import { ADMIN_CSS, helpersJS, STUDIO_JS, studiosSection } from './admin.js';
-import { canonical, ldJSON } from './seo/site.js';
+import { canonical, ldJSON, GA4_HEAD } from './seo/site.js';
 import { SHOWN, EARN, iconURI, ownedIcons, claimEarned, canPick, PLAY_GEMS } from './icons.js';
 import { FRAMES, FRAME_EARN, ownedFrames, claimFrames, progress, MILESTONES, hallTrophies } from './frames.js';
 import { friendState, listFriends, incomingRequests, gameLevel } from './friends.js';
@@ -28,12 +28,12 @@ const MEDAL = r => r === 1 ? 'gold' : r === 2 ? 'silver' : r === 3 ? 'bronze' : 
 const CUP = '<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M14 6h20v10a10 10 0 0 1-20 0z" fill="currentColor"/><path d="M14 9H7v4a7 7 0 0 0 7 7M34 9h7v4a7 7 0 0 1-7 7" fill="none" stroke="currentColor" stroke-width="3"/><path d="M21 26h6v8h-6z" fill="currentColor"/><path d="M14 36h20v6H14z" fill="currentColor"/><path d="M18 9v7" stroke="rgba(255,255,255,.45)" stroke-width="2.5" stroke-linecap="round"/></svg>';
 const gemCount = n => `<span class="gems" title="Gems">${GEM}${Number(n || 0).toLocaleString('en-US')}</span>`;
 
-export function layout({ title, titleFull, desc, me, active, body, url, scripts = '', og = {}, canonicalPath, jsonld, robots }) {
+export function layout({ title, titleFull, desc, me, active, body, url, scripts = '', og = {}, canonicalPath, jsonld, robots, analytics = true }) {
   const t = titleFull || (title ? `${title} · RookieGamers` : 'RookieGamers · free web games, one account');
   const ogTitle = og.title || t, ogDesc = og.desc || desc || 'Play free web games from indie developers, with one account, one level and one Hall of Fame across every game.';
   const nav = [['/', 'Games'], ['/hall-of-fame', 'Hall of Fame'], ['/shop', 'Diamond Shop'], ['/dev', 'Publish'], ['/docs', 'SDK']];
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(t)}</title><meta name="description" content="${esc(desc || 'Play free web games from indie developers, with one account, one level and one Hall of Fame across every game.')}"><meta name="google-adsense-account" content="ca-pub-8081136929405133"><meta name="google-site-verification" content="OSHWSdXxLLrQTk12-QAup0nc3IHfnccGLamcxk2hDng"><meta name="impact-site-verification" value="c1bf013b-98e9-4301-81d1-32679b2d3b60">
+<title>${esc(t)}</title><meta name="description" content="${esc(desc || 'Play free web games from indie developers, with one account, one level and one Hall of Fame across every game.')}"><meta name="google-adsense-account" content="ca-pub-8081136929405133"><meta name="google-site-verification" content="OSHWSdXxLLrQTk12-QAup0nc3IHfnccGLamcxk2hDng"><meta name="impact-site-verification" value="c1bf013b-98e9-4301-81d1-32679b2d3b60">${analytics === false ? '' : GA4_HEAD}
 ${robots ? `<meta name="robots" content="${esc(robots)}">` : ''}
 <meta property="og:site_name" content="RookieGamers"><meta property="og:title" content="${esc(ogTitle)}"><meta property="og:description" content="${esc(ogDesc)}"><meta property="og:type" content="${esc(og.type || 'website')}"><meta property="og:locale" content="en_US">
 ${canonicalPath ? `<meta property="og:url" content="${esc(canonical(canonicalPath))}">` : url ? `<meta property="og:url" content="${esc(url)}">` : ''}${canonicalPath ? `<link rel="canonical" href="${esc(canonical(canonicalPath))}">` : ''}<meta property="og:image" content="${esc(og.image || DEFAULT_OG_IMAGE)}"><meta property="og:image:alt" content="${esc(og.alt || ogTitle)}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="${esc(og.image || DEFAULT_OG_IMAGE)}"><meta name="twitter:image:alt" content="${esc(og.alt || ogTitle)}"><meta name="theme-color" content="#0f0d16">
@@ -369,7 +369,7 @@ const f=document.getElementById('emailForm');if(f)f.onsubmit=async e=>{e.prevent
 const r=await fetch('/api/auth/email',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:d.get('email'),age:age.checked,next:${data(after)}})});const j=await r.json().catch(()=>({}));b.disabled=false;
 document.getElementById('emailMsg').innerHTML=r.ok?'<div class="note ok">Check your inbox for a sign-in link. '+(j.devLink?'<a href="'+j.devLink+'" id="devLink">Dev sign-in link</a>':'')+'</div>':'<div class="note err"></div>';if(!r.ok)document.querySelector('#emailMsg .err').textContent=j.error||'Something went wrong.'};
 </script>`;
-  return html(layout({ title: 'Sign in', me, body, scripts: script, robots: 'noindex,follow' }));
+  return html(layout({ title: 'Sign in', me, body, scripts: script, robots: 'noindex,follow', analytics: false }));
 }
 
 // After a sign-in that started in a popup, tell the page that opened it, then close.
@@ -386,12 +386,12 @@ async function connect(DB, req, env, url) {
   const back = url.searchParams.get('return');
   const origins = g ? safeJSON(g.origins, []) : [];
   const devOrigin = env.DEV_LOGIN === '1' && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
-  if (!g || !(origins.includes(origin) || devOrigin)) return html(layout({ me, title: 'Sign in', body: '<h1>Can\'t sign in here</h1><p class="lede">This game isn\'t set up for RookieGamers sign-in from that site.</p>' }), 400);
+  if (!g || !(origins.includes(origin) || devOrigin)) return html(layout({ me, title: 'Sign in', body: '<h1>Can\'t sign in here</h1><p class="lede">This game isn\'t set up for RookieGamers sign-in from that site.</p>', analytics: false }), 400);
   if (!me) return Response.redirect(`${url.origin}/signin?next=${encodeURIComponent(url.pathname + url.search)}`, 302);
   if (url.searchParams.get('ok') !== '1') {
     const body = `<h1>Play ${esc(g.title)} as ${esc(me.name)}?</h1><p class="lede">${esc(g.title)} will see your RookieGamers name, level and title, and can save your scores. It never sees your email or password.</p>${g.social_accounts ? `<p class="note">${SOCIAL_NOTE}</p>` : ''}
 <div style="display:flex;gap:8px"><a class="btn" href="${esc(url.pathname + url.search)}&ok=1">Continue</a><button class="btn ghost" type="button" onclick="window.close()">Cancel</button></div>`;
-    return html(layout({ me, title: 'Sign in', body }));
+    return html(layout({ me, title: 'Sign in', body, analytics: false }));
   }
   const auth = await mintFor(DB, env, me.id, g.slug);
   const payload = { ...auth, game: g.slug };
@@ -416,7 +416,7 @@ async function linkPage(DB, req, env, url) {
   const provider = String(url.searchParams.get('provider') || '').toLowerCase();
   const fromPortal = origin === url.origin;
   const devOrigin = env.DEV_LOGIN === '1' && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
-  const stop = msg => html(layout({ me, title: 'Link an account', body: `<h1>Can't link that here</h1><p class="lede">${msg}</p><button class="btn ghost" type="button" onclick="window.close()">Close</button>` }), 400);
+  const stop = msg => html(layout({ me, title: 'Link an account', body: `<h1>Can't link that here</h1><p class="lede">${msg}</p><button class="btn ghost" type="button" onclick="window.close()">Close</button>`, analytics: false }), 400);
   if (!g || !(fromPortal || safeJSON(g.origins, []).includes(origin) || devOrigin)) return stop('This game isn\'t set up for RookieGamers sign-in from that site.');
   if (!g.social_accounts) return stop(`${esc(g.title)} doesn't use social accounts.`);
   const net = providers(env).social.find(x => x.id === provider);
@@ -429,7 +429,7 @@ async function linkPage(DB, req, env, url) {
     const body = `<h1>Link your ${esc(net.name)} account</h1><p class="lede">${esc(g.title)} plays as your ${esc(net.name)} account. Link it to your RookieGamers account to continue.</p>
 ${tried ? `<div class="note err">${esc(net.name)} didn't link. Try again.</div>` : ''}<p class="note">${SOCIAL_NOTE}</p>
 <div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn" href="/auth/${esc(net.route)}?next=${encodeURIComponent(here + '&tried=1')}">Link ${esc(net.name)}</a><button class="btn ghost" type="button" onclick="window.close()">Cancel</button></div>`;
-    return html(layout({ me, title: 'Link an account', body, robots: 'noindex' }));
+    return html(layout({ me, title: 'Link an account', body, robots: 'noindex', analytics: false }));
   }
   const done = msg => `<!doctype html><meta charset="utf-8"><title>Linked</title><body style="background:#0f0d16;color:#fff;font:16px system-ui;display:grid;place-items:center;height:100vh"><p>${esc(net.name)} is linked. Back to ${esc(g.title)}...</p><script>${msg};setTimeout(()=>window.close(),300)</script>`;
   if (fromPortal) return html(done(`window.opener&&window.opener.postMessage({rg:1,type:'linked'},location.origin)`));

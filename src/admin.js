@@ -98,7 +98,7 @@ function studioForm(s) {
 export async function adminPage(DB, env, req) {
   const me = await viewer(DB, req);
   if (!me) return Response.redirect(new URL('/signin?next=/admin', req.url).href, 302);
-  if (!isAdmin(env, me.id)) return html(layout({ title: 'Admin', me, robots: 'noindex', body: '<h1>Admin</h1><p class="lede">This page is for the RookieGamers team.</p>' }), 403);
+  if (!isAdmin(env, me.id)) return html(layout({ title: 'Admin', me, robots: 'noindex', body: '<h1>Admin</h1><p class="lede">This page is for the RookieGamers team.</p>', analytics: false }), 403);
   const [queue, games, studios] = await Promise.all([reviewQueue(DB, env), DB.prepare('SELECT * FROM games ORDER BY live DESC, featured_at IS NULL, title').all().then(r => r.results), listStudios(DB, null, true)]);
   const body = `${ADMIN_CSS}
 <h1>Admin</h1><p class="lede">Edit any game, upload covers, publish and feature games, review first games and invite developers.</p>
@@ -126,5 +126,5 @@ document.querySelectorAll('.q').forEach(q=>q.querySelectorAll('[data-review]').f
 ${STUDIO_JS}
 document.getElementById('invForm').onsubmit=async e=>{e.preventDefault();const m=document.getElementById('invMsg');try{const r=await api('POST','/invites',{note:new FormData(e.target).get('note')});const link=r.url+r.invite;m.innerHTML='<div class="note ok">Send this link (works once): <code></code></div>';m.querySelector('code').textContent=link}catch(err){m.innerHTML='<div class="note err"></div>';m.firstChild.textContent=err.message}};
 </script>`;
-  return html(layout({ title: 'Admin', me, robots: 'noindex', body, scripts: '<script src="/crop.js"></script>' + script }));
+  return html(layout({ title: 'Admin', me, robots: 'noindex', body, scripts: '<script src="/crop.js"></script>' + script, analytics: false }));
 }

@@ -2,7 +2,7 @@
 // and the other sign-in networks require public URLs for these before an app can go live. They
 // describe what the portal's code actually does; keep them in step when that changes.
 
-export const LEGAL_UPDATED = 'November 11, 2026';
+export const LEGAL_UPDATED = 'November 14, 2026';
 export const OPERATOR = 'Tenacié LLC';
 export const CONTACT = 'support@rookiegamers.com';
 
@@ -39,7 +39,7 @@ To run your account and sign you in, keep scores and the Hall of Fame, award gem
 ## Who we share it with
 - **Games you play.** When you play a game, it gets a signed token with your player ID and display name, and can read your public profile, so it can show your name and save your scores. It doesn't get your email or your linked networks.
 - **Other players.** Your display name, avatar, level, titles, scores and Hall of Fame places are public.
-- **Service providers** that run parts of the service for us: Cloudflare (hosting, database and storage), Resend (sign-in emails), Stripe (payments and developer payouts) and, when ads are on, the ad networks that serve them. They only use the data to provide their service.
+- **Service providers** that run parts of the service for us: Cloudflare (hosting, database and storage), Resend (sign-in emails), Stripe (payments and developer payouts), Google Analytics (aggregate traffic measurement) and, when ads are on, the ad networks that serve them. They only use the data to provide their service.
 - **The network you signed in with**, which knows you used it to sign in to RookieGamers.
 - **The law.** If we're required to by law, or to protect players and the service.
 
@@ -47,7 +47,10 @@ To run your account and sign you in, keep scores and the Hall of Fame, award gem
 If a public authority asks us for players' data, we check with a lawyer that the request is lawful and challenge requests that aren't. We share only the minimum the law requires, and we keep a record of each request and how we responded.
 
 ## Cookies
-We use a sign-in cookie to keep you signed in, short-lived cookies while a sign-in is in progress, and a cookie that remembers which friend's invite link brought you here (for 30 days). Your sound setting is saved in your browser. When ads are on, ad networks may set their own cookies.
+We use a sign-in cookie to keep you signed in, short-lived cookies while a sign-in is in progress, and a cookie that remembers which friend's invite link brought you here (for 30 days). Your sound setting is saved in your browser. Google Analytics sets cookies to measure aggregate traffic, as described under Analytics. When ads are on, ad networks may set their own cookies.
+
+## Analytics
+The site uses Google Analytics to measure aggregate traffic: pages visited, device and browser information, and approximate location. Google Analytics does this with cookies. How Google uses information from sites that use its services is described at [Google's partner-sites policy](https://policies.google.com/technologies/partner-sites). You can opt out of Google Analytics with the [Google Analytics opt-out browser add-on](https://tools.google.com/dlpage/gaoptout).
 
 ## Advertising
 Google and third-party vendors use cookies to serve ads based on prior visits to this site and other sites. Google's advertising cookies enable Google and its partners to serve ads based on your visits. You can opt out of personalized advertising at [Google's Ads Settings](https://www.google.com/settings/ads) and at [aboutads.info/choices](https://www.aboutads.info/choices/). How Google uses information from sites or apps that use its services is described at [Google's partner-sites policy](https://policies.google.com/technologies/partner-sites).

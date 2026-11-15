@@ -26,6 +26,10 @@ export const SEED_GAMES = [
   { slug: 'fishtarttycoon', title: 'FishTartTycoon', kind: 'hosted', live: false, developer: 'ecoay',
     blurb: 'Humans build an industrial civilisation because three hungry seals want fish tarts. The seals are still sitting forty feet away.',
     tags: ['tycoon', 'idle'], color: '#4fb3ff', score_label: 'Season revenue', score_mode: 'best', score_order: 'desc' },
+  // Built from games/faultyparty in this repo (npm run deploy there). A party lives entirely in its share room.
+  { slug: 'faultyparty', title: 'FaultyParty', kind: 'hosted', live: false, developer: 'ecoay',
+    blurb: 'Choose five friends. Give them a terrible situation. Find out which one makes it worse.',
+    tags: ['party', 'social', 'satire'], color: '#d42a24' },
   { slug: 'glitch-homiez', title: 'Glitch Homiez', kind: 'linked', live: false, developer: 'ecoay', blurb: '', tags: [], color: '#ff2bd6' },
 ];
 

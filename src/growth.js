@@ -78,11 +78,15 @@ export function shareText(g, { score, text } = {}) {
   return `Come play ${g.title} with me on RookieGamers.`;
 }
 
+// A share or invite room: what rides on the link for the game to read back. Up to 120 so a game can
+// carry its whole state in it (FaultyParty puts the scenario, seed and five X handles there).
+export const ROOM_RE = /^[A-Za-z0-9_-]{1,120}$/;
+
 // A share link for a game. Signed-in players get a /s/ link that credits them; guests get the
 // plain game link (with the room, for multiplayer invites).
 export async function createShare(DB, site, g, pid, { score, room, text } = {}) {
   score = Number.isFinite(Number(score)) && Number(score) > 0 ? Math.floor(Number(score)) : null;
-  room = typeof room === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(room) ? room : null;
+  room = typeof room === 'string' && ROOM_RE.test(room) ? room : null;
   const message = shareText(g, { score, text });
   if (!pid) return { url: `${site}/play/${g.slug}${room ? '?room=' + room : ''}`, text: message, credited: false };
   const recent = await DB.prepare('SELECT COUNT(*) AS n FROM shares WHERE player_id = ? AND created_at > ?').bind(pid, now() - 3600 * 1000).first();

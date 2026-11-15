@@ -205,7 +205,7 @@ Following `rg.audio` also covers ads: the game goes quiet when an ad opens and c
 | `rg.invite.link({ room })` | Just the link, for your own invite button. Resolves to `{ ok, url, credited }` |
 | `rg.invite.room()` | The room from an invite link the player opened, or `null`. Use it to drop them into their friend's match |
 
-Everything is optional. `score` makes the message and the link preview a challenge ("Sam got 12,400 in Rock Dodge. Can you beat it?"). `text` replaces the message. `room` rides along on the link for multiplayer invites. Call `rg.share()` from a button the player pressed, so the browser allows the share menu.
+Everything is optional. `score` makes the message and the link preview a challenge ("Sam got 12,400 in Rock Dodge. Can you beat it?"). `text` replaces the message. `room` rides along on the link for multiplayer invites: letters, numbers, `_` and `-`, up to 120 characters, so it can also carry a small game state. Anything else is dropped. Call `rg.share()` from a button the player pressed, so the browser allows the share menu.
 
 When the player is signed in, the link credits them. A friend who signs up through it and plays for 10 minutes earns the sharer 100 gems and earns the friend 25. Players also earn 50 gems for each social account they link. Gems are a reward currency on RookieGamers, not money. Your game's stats show its share links, the visits they brought and the sign-ups.
 

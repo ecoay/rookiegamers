@@ -1,0 +1,62 @@
+@font-face { font-family: "Alfa Slab One"; src: url("/fonts/alfa-slab-one.ttf") format("truetype"); font-display: swap; }
+@font-face { font-family: "IBM Plex Mono"; font-weight: 400; src: url("/fonts/ibm-plex-mono-regular.ttf") format("truetype"); font-display: swap; }
+@font-face { font-family: "IBM Plex Mono"; font-weight: 700; src: url("/fonts/ibm-plex-mono-bold.ttf") format("truetype"); font-display: swap; }
+:root {
+  --ink: #14110f;
+  --red: #d42a24;
+  --cream: #f3e6cf;
+  --card: #c69a5c;
+  --muted: #b9ab93;
+  --slab: "Alfa Slab One", Georgia, serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--ink) radial-gradient(circle at 50% 0, #2b221b, var(--ink) 70%);
+  color: var(--cream);
+  font-family: var(--mono);
+  min-height: 100vh;
+}
+button, a, input, select { font: inherit; color: inherit; }
+.page { max-width: 1040px; margin: 0 auto; padding: 16px; }
+.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.brand { background: none; border: 0; padding: 0; cursor: pointer; font-family: var(--slab); font-size: 28px; color: var(--red); }
+.soon { font-size: 12px; border: 1px dashed var(--muted); color: var(--muted); padding: 4px 8px; }
+h1, h2 { font-family: var(--slab); font-weight: 400; line-height: 1.1; }
+h1 { font-size: clamp(30px, 6vw, 56px); margin: 32px 0 12px; }
+h2 { font-size: clamp(26px, 5vw, 40px); margin: 24px 0 8px; }
+.lede { font-size: 18px; max-width: 640px; }
+.small { font-size: 13px; color: var(--muted); }
+.setup { max-width: 760px; }
+.card { display: block; width: 100%; height: auto; aspect-ratio: 1200 / 675; margin: 20px 0; border: 3px solid var(--ink); box-shadow: 0 10px 40px #000a; background: #2a1a14; }
+.big, .actions a, .actions button {
+  display: inline-block; text-decoration: none; cursor: pointer;
+  border: 3px solid var(--ink); background: var(--cream); color: var(--ink);
+  padding: 10px 16px; font-weight: 700; box-shadow: 4px 4px 0 var(--red);
+}
+.big, .actions .big { background: var(--red); color: var(--cream); box-shadow: 4px 4px 0 var(--cream); font-family: var(--slab); font-weight: 400; font-size: 20px; }
+.big:disabled { opacity: 0.4; cursor: not-allowed; }
+.actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.builder form { display: grid; gap: 10px; max-width: 620px; }
+.slot { display: grid; grid-template-columns: 28px 16px 1fr; align-items: center; gap: 6px; background: #ffffff0d; padding: 8px 10px; border-left: 4px solid var(--card); }
+.slot.me { border-left-color: var(--red); }
+.num { font-family: var(--slab); color: var(--card); }
+.at { color: var(--muted); }
+.slot input { background: transparent; border: 0; border-bottom: 2px solid var(--muted); padding: 6px 2px; outline: none; min-width: 0; }
+.slot input:focus { border-color: var(--cream); }
+.status { grid-column: 3; font-size: 12px; min-height: 1em; color: var(--muted); }
+.status.ok { color: #9fd36b; }
+.status.bad { color: #ff7a6e; }
+.pick { display: flex; gap: 10px; align-items: center; margin: 6px 0 10px; }
+.pick select { background: var(--cream); color: var(--ink); border: 2px solid var(--ink); padding: 6px; }
+.cast { list-style: none; padding: 0; display: grid; gap: 10px; margin: 24px 0; }
+.cast li { display: grid; gap: 2px; padding: 10px 12px; background: #ffffff0d; border-left: 4px solid var(--red); }
+.cast a { color: var(--card); font-weight: 700; text-decoration: none; }
+.cast strong { font-family: var(--slab); font-weight: 400; font-size: 18px; }
+.foot { margin: 48px 0 16px; font-size: 12px; color: var(--muted); }
+.upgrade { margin: 28px 0 8px; padding: 16px; border: 3px dashed var(--muted); background: #ffffff08; }
+.upgrade h3 { font-family: var(--slab); font-weight: 400; font-size: 26px; margin: 0 0 6px; color: var(--card); }
+.upgrade p { margin: 0 0 12px; max-width: 640px; }
+.offers { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
+.offers button { border: 3px solid var(--ink); background: var(--card); color: var(--ink); padding: 10px 14px; font-weight: 700; opacity: 0.6; cursor: not-allowed; }

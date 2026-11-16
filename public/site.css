@@ -155,3 +155,9 @@ dialog.share{width:min(460px,calc(100vw - 32px))}
 .studio-by{display:inline-flex;margin-left:6px;vertical-align:middle;align-items:center;gap:8px;color:var(--dim);font-weight:600;text-decoration:none;white-space:nowrap}.studio-by:hover{color:var(--text)}
 .slogo{width:28px;height:28px;border-radius:7px;object-fit:cover;flex:none;background:var(--panel2)}.slogo.none{display:inline-grid;place-items:center;font-weight:800;color:var(--text)}
 .slogo.big{width:96px;height:96px;border-radius:18px;font-size:40px}.studio-head{display:flex;gap:18px;align-items:center;margin:10px 0 20px}.studio-head h1{margin:0 0 6px}
+
+/* Full screen on iPhone/iPad (and browsers with no Fullscreen API): the game fills the screen. */
+html.rg-fill,html.rg-fill body{overflow:hidden;overscroll-behavior:none}
+.stage.fill{box-sizing:border-box;position:fixed;inset:0;z-index:1000;width:100vw;height:100vh;height:100dvh;max-height:none;aspect-ratio:auto;border:0;border-radius:0;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+.fill-exit{position:absolute;top:calc(env(safe-area-inset-top) + 8px);right:calc(env(safe-area-inset-right) + 8px);z-index:2;font:600 13px/1 system-ui,sans-serif;color:#fff;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.25);border-radius:999px;padding:8px 12px;cursor:pointer;opacity:.75}
+.fill-exit:hover,.fill-exit:focus-visible{opacity:1}

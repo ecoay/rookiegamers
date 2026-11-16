@@ -258,6 +258,35 @@
     if (ready && gameOrigin) send({ type: 'audio', data: { muted } }, gameOrigin);
   };
   document.addEventListener('keydown', e => { if (e.key === 'm' && e.altKey && sound) sound.click(); });
+  // Full screen. On iPhone and iPad, Safari's real full screen (the Fullscreen API) is made for
+  // video: the moment a game needs typing (a name box, a room code, a sign-in field, a hardware
+  // keyboard) Safari covers it with "It looks like you are typing while in full screen" and kicks the
+  // player out. So there we fill the screen with the game ourselves instead: same button, same
+  // effect, and typing just works. Everywhere else keeps the real full screen.
   const fs = document.getElementById('fs');
-  if (fs) fs.onclick = () => (frame.requestFullscreen ? frame.requestFullscreen() : frame.webkitRequestFullscreen && frame.webkitRequestFullscreen());
+  const stage = frame.closest('.stage');
+  const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  let exitBtn = null;
+  function fill(on) {
+    if (!stage) return;
+    stage.classList.toggle('fill', on);
+    document.documentElement.classList.toggle('rg-fill', on);
+    if (on && !exitBtn) {
+      exitBtn = document.createElement('button');
+      exitBtn.type = 'button';
+      exitBtn.className = 'fill-exit';
+      exitBtn.textContent = 'Exit full screen';
+      exitBtn.onclick = () => fill(false);
+      stage.appendChild(exitBtn);
+    }
+    if (exitBtn) exitBtn.hidden = !on;
+    if (fs) fs.textContent = on ? 'Exit full screen' : 'Full screen';
+    if (on) { window.scrollTo(0, 0); try { frame.focus(); } catch (e) { /* fine */ } }
+  }
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && stage && stage.classList.contains('fill')) fill(false); });
+  if (fs) fs.onclick = () => {
+    if (ios || !(frame.requestFullscreen || frame.webkitRequestFullscreen)) return fill(!(stage && stage.classList.contains('fill')));
+    const p = frame.requestFullscreen ? frame.requestFullscreen() : frame.webkitRequestFullscreen();
+    if (p && p.catch) p.catch(() => fill(true));
+  };
 })();

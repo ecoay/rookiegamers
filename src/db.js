@@ -137,10 +137,31 @@ export async function migrate(DB) {
     g.devices || 'both', g.multiplayer ? 1 : 0, g.score_label || 'Score', g.score_mode || 'best', g.score_order || 'desc', g.max_score ?? null, g.live === false || !g.url ? 0 : 1, g.social_accounts ? 1 : 0, t, t)));
 }
 
+// The schema is applied once per deploy, not on every new Worker instance. Each deploy has its own
+// version id (CF_VERSION_METADATA); the first instance of a deploy migrates and records the id in
+// the meta table, and later instances only read it back (one query instead of ~50).
+// If migrating fails (a D1 hiccup), the site still serves as long as the database answers, and the
+// next request tries again. Only a database that doesn't answer at all reads as offline.
+async function ensureSchema(DB, version) {
+  if (version) {
+    const row = await DB.prepare("SELECT value FROM meta WHERE key = 'schema'").first().catch(() => null);
+    if (row && row.value === version) return;
+  }
+  await migrate(DB);
+  if (version) {
+    await DB.prepare('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)').run();
+    await DB.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('schema', ?)").bind(version).run();
+  }
+}
+
 let ready = null;
 export function db(env) {
   if (!env.DB) return null;
-  if (!ready) ready = migrate(env.DB).catch(e => { ready = null; throw e; });
+  if (!ready) ready = ensureSchema(env.DB, env.CF_VERSION_METADATA && env.CF_VERSION_METADATA.id).catch(async e => {
+    ready = null;
+    console.error('migrate', e);
+    await env.DB.prepare('SELECT 1').first();
+  });
   return ready.then(() => env.DB);
 }
 

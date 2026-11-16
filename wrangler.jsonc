@@ -15,6 +15,8 @@
   "d1_databases": [{ "binding": "DB", "database_name": "rookiegamers", "database_id": "f65c4025-5367-4add-a0ab-16ea46934306" }],
   // Hosted game builds. Create it with `npx wrangler r2 bucket create rookiegamers-games`.
   "r2_buckets": [{ "binding": "GAMES", "bucket_name": "rookiegamers-games" }],
+  // The deploy's version id: the database schema is applied once per deploy (src/db.js).
+  "version_metadata": { "binding": "CF_VERSION_METADATA" },
   // 00:10 UTC on the 1st: seal last month's boards into the Hall of Fame.
   "triggers": { "crons": ["10 0 1 * *"] },
   // Secrets (dashboard, not here): RESEND_API_KEY, ADMIN_TOKEN, and for SceneSpot or any OpenID
@@ -35,6 +37,7 @@
       "workers_dev": true,
       "d1_databases": [{ "binding": "DB", "database_name": "rookiegamers-staging", "database_id": "97a6f9d2-73eb-49bf-9d83-f6fff1455381" }],
       "r2_buckets": [{ "binding": "GAMES", "bucket_name": "rookiegamers-staging-games" }],
+      "version_metadata": { "binding": "CF_VERSION_METADATA" },
       "triggers": { "crons": [] },
       "vars": { "SITE_URL": "https://rookiegamers-staging.ecoay.workers.dev", "EMAIL_FROM": "RookieGamers <login@rookiegamers.com>", "OPEN_DEVELOPERS": "1", "DEV_LOGIN": "1", "STAGING": "1" }
     }

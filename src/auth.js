@@ -40,6 +40,13 @@ export async function sessionPlayer(DB, req) {
   return row ? row.player_id : null;
 }
 
+// The signed-in player's whole row in one query (pages show it on every load).
+export async function sessionPlayerRow(DB, req) {
+  const tok = cookies(req)[COOKIE];
+  if (!tok || tok.length < 20) return null;
+  return DB.prepare('SELECT p.* FROM sessions s JOIN players p ON p.id = s.player_id WHERE s.token = ?').bind(await sha256(tok)).first();
+}
+
 export async function newSession(DB, req, playerId) {
   const tok = newId('', 48);
   await DB.prepare('INSERT INTO sessions (token, player_id, created_at) VALUES (?, ?, ?)').bind(await sha256(tok), playerId, now()).run();

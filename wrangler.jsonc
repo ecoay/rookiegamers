@@ -7,7 +7,9 @@
   "workers_dev": true,
   "preview_urls": true,
   // Static files: site.css, portal.js and the SDK at /sdk/v1.js. Pages and APIs run in the Worker.
-  "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": true },
+  // Plain files (styles, scripts, icons, images) are served straight from the nearest edge without
+  // waking the Worker, which matters with Smart Placement below. Everything else runs the Worker.
+  "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": ["/*", "!/site.css", "!/home.css", "!/home.js", "!/portal.js", "!/crop.js", "!/favicon.svg", "!/icons/*", "!/img/*", "!/brand/*"] },
   // The docs are bundled as text so the site, the MCP server and the plugin share one source.
   "rules": [{ "type": "Text", "globs": ["**/*.md"], "fallthrough": true }],
   // Players, sign-in, games, plays, scores and the Hall of Fame. The Worker applies its own schema.
@@ -25,6 +27,10 @@
   // attached in the dashboard like rookiegamers.com), so they get normal browser storage.
   "vars": { "SITE_URL": "https://rookiegamers.com", "EMAIL_FROM": "RookieGamers <login@rookiegamers.com>", "OPEN_DEVELOPERS": "0", "GAMES_HOST": "games.rookiegamers.com" },
   "observability": { "enabled": true },
+  // Smart Placement: Cloudflare runs the Worker near the database when that is faster than running
+  // it near the player. Pages make several database trips each, so a player in Bangkok waits for
+  // one long trip (to the Worker) instead of several (from a Bangkok Worker to the database).
+  "placement": { "mode": "smart" },
   // Staging: `npx wrangler deploy --env staging`. A separate copy for developers to test games
   // from localhost without touching real players or scores. Its own database and bucket:
   //   npx wrangler d1 create rookiegamers-staging   (paste the id below)

@@ -1,5 +1,5 @@
 import { getGame, getPlayer, publicPlayer, avatarFor, gameView, monthKey, monthLabel, levelFor, safeJSON, coverSrc } from './db.js';
-import { sessionPlayer, providers, safeNext, setCookie } from './auth.js';
+import { sessionPlayer, sessionPlayerRow, providers, safeNext, setCookie } from './auth.js';
 import { getShare, isBot, countShareClick, validVia, referralStats, gemHistory, GEMS, linkGems, VIA_COOKIE, SHARE_COOKIE, VIA_DAYS, REFERRAL_PLAY_MS } from './growth.js';
 import { frontPage, topScores, fame, sealIfDue } from './play.js';
 import { isDeveloper, myGames, listKeys, siteURL, getStudio, studioView, listStudios, STUDIO_SLUG_RE } from './dev.js';
@@ -48,8 +48,7 @@ ${scripts}</body></html>`;
 }
 
 export async function viewer(DB, req) {
-  const pid = await sessionPlayer(DB, req);
-  const p = pid && await getPlayer(DB, pid);
+  const p = await sessionPlayerRow(DB, req);
   return p ? { ...publicPlayer(p), gems: p.gems } : null;
 }
 
@@ -115,8 +114,7 @@ function playDescription(g) {
 }
 
 async function play(DB, req, env, url, slug) {
-  const g = await getGame(DB, slug);
-  const me = await viewer(DB, req);
+  const [g, me] = await Promise.all([getGame(DB, slug), viewer(DB, req)]);
   if (!g || !g.live) return notFound(me, 'That game isn\'t here (yet).');
   const frame = frameFor(env, g, url);
   if (!frame) return notFound(me, 'This game is still being uploaded.');

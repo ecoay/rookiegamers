@@ -148,7 +148,18 @@ export async function playNext(DB, fromSlug, playerId, rand = Math.random) {
 
 // Playtime per player over the last 30 days. The front page ranks by this, not raw plays,
 // so a good small game can beat a big one that people bounce off.
-export async function engagement(DB) {
+// It scans every play from the last 30 days, and the home page, every /play page and "play next"
+// all ask for it, so each Worker instance keeps the answer for a minute.
+const ENGAGEMENT_TTL = 60 * 1000;
+const engagementCache = new WeakMap();
+export function engagement(DB) {
+  const hit = engagementCache.get(DB);
+  if (hit && now() - hit.at < ENGAGEMENT_TTL) return hit.value;
+  const value = engagementFresh(DB).catch(e => { engagementCache.delete(DB); throw e; });
+  engagementCache.set(DB, { at: now(), value });
+  return value;
+}
+async function engagementFresh(DB) {
   const rows = (await DB.prepare(`SELECT game, COUNT(*) AS plays, COUNT(DISTINCT COALESCE(player_id, id)) AS players, SUM(ms) AS ms
     FROM plays WHERE started_at > ? GROUP BY game`).bind(now() - 30 * DAY).all()).results;
   return Object.fromEntries(rows.map(r => [r.game, { plays: r.plays, players: r.players, ms: r.ms, perPlayer: r.players ? r.ms / r.players : 0 }]));

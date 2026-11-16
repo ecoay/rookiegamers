@@ -65,6 +65,9 @@ const SCHEMA = [
     ms INTEGER NOT NULL DEFAULT 0, last_at INTEGER NOT NULL)`,
   `CREATE INDEX IF NOT EXISTS plays_game ON plays(game, started_at)`,
   `CREATE INDEX IF NOT EXISTS plays_player ON plays(player_id, game)`,
+  // The 30-day engagement scan (front page) and the daily XP cap read plays by time.
+  `CREATE INDEX IF NOT EXISTS plays_recent ON plays(started_at, game, player_id, ms)`,
+  `CREATE INDEX IF NOT EXISTS plays_player_time ON plays(player_id, started_at)`,
   `CREATE TABLE IF NOT EXISTS scores (game TEXT NOT NULL, month TEXT NOT NULL, player_id TEXT NOT NULL, score INTEGER NOT NULL,
     at INTEGER NOT NULL, PRIMARY KEY (game, month, player_id))`,
   `CREATE INDEX IF NOT EXISTS scores_rank ON scores(game, month, score)`,

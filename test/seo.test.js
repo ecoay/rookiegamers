@@ -301,12 +301,13 @@ test('/ai, /faq and llms files separate the live MCP server from unverified clie
   }
 });
 
-test('JSON-LD Organization has no logo pointing at the missing favicon', async () => {
+test('JSON-LD logos point at the real brand logo', async () => {
   const env = await setup();
   for (const p of ['/', '/about', '/creators', '/ai', '/faq', '/dev', '/docs', '/hall-of-fame']) {
     const t = await (await get(env, p)).text();
     for (const m of t.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g))
-      assert.doesNotMatch(m[1], /"logo"/, p);
+      for (const l of m[1].matchAll(/"logo":"([^"]*)"/g)) assert.equal(l[1], 'https://rookiegamers.com/brand/rookiegamers-logo-512.png', p);
+    assert.match(t, /<link rel="icon" href="\/favicon\.ico"/, p);
   }
 });
 

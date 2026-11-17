@@ -139,8 +139,8 @@ async function getClient(DB, id) {
 
 function page(title, body, status = 200) {
   return new Response(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="impact-site-verification" value="c1bf013b-98e9-4301-81d1-32679b2d3b60"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(title)} · RookieGamers</title><meta name="robots" content="noindex"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/site.css"></head><body>
-<header class="top"><div class="wrap"><a class="logo" href="/"><b>RG</b>RookieGamers</a></div></header>
+<title>${esc(title)} · RookieGamers</title><meta name="robots" content="noindex"><link rel="icon" href="/favicon.ico" sizes="48x48"><link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32"><link rel="icon" href="/favicon-16.png" type="image/png" sizes="16x16"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="manifest" href="/site.webmanifest"><link rel="stylesheet" href="/site.css"></head><body>
+<header class="top"><div class="wrap"><a class="logo" href="/"><img src="/brand/rg-mark-64.png" width="30" height="30" alt="">RookieGamers</a></div></header>
 <main><div class="wrap" style="max-width:560px">${body}</div></main></body></html>`,
   { status, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-frame-options': 'DENY', 'content-security-policy': "frame-ancestors 'none'" } });
 }

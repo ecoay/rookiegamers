@@ -9,7 +9,7 @@ import { APEX } from './seo/site.js';
 // earn: a milestone instead of a price. pick: one icon of the group is chosen at the milestone.
 // soon: listed in code but hidden until its art is in public/icons/.
 export const ICONS = [
-  { id: 'logo', name: 'RookieGamers', earn: 'level2', file: 'rookie-gamers-logo', soon: true },
+  { id: 'logo', name: 'RookieGamers', earn: 'level2', file: 'rookie-gamers-logo' },
   { id: 'rookie', name: 'Rookie Gamer', earn: 'level5', pick: 'rookie', file: 'rookie-gamer-portrait' },
   { id: 'rookie-2', name: 'Rookie Gamer', earn: 'level5', pick: 'rookie', file: 'rookie-gamer-female-portrait' },
   { id: 'fishtart-handler-pink', name: 'FishTart Handler', price: 150 },

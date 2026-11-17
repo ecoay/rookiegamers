@@ -8,6 +8,7 @@ header.top{position:sticky;top:0;z-index:20;background:rgba(15,13,22,.88);backdr
 header.top .wrap{display:flex;align-items:center;gap:20px;height:60px}
 .logo{display:flex;align-items:center;gap:8px;font-weight:800;font-size:19px;text-decoration:none;letter-spacing:-.01em;white-space:nowrap}
 .logo b{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--hot),var(--violet));font-size:15px}
+.logo img{width:30px;height:30px;object-fit:contain}
 nav.main{display:flex;gap:18px;flex:1;overflow-x:auto;scrollbar-width:none}
 nav.main a{text-decoration:none;color:var(--dim);font-weight:600;font-size:15px;white-space:nowrap}
 nav.main a:hover,nav.main a[aria-current]{color:var(--text)}

@@ -9,7 +9,7 @@
   // Static files: site.css, portal.js and the SDK at /sdk/v1.js. Pages and APIs run in the Worker.
   // Plain files (styles, scripts, icons, images) are served straight from the nearest edge without
   // waking the Worker, which matters with Smart Placement below. Everything else runs the Worker.
-  "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": ["/*", "!/site.css", "!/home.css", "!/home.js", "!/portal.js", "!/crop.js", "!/favicon.svg", "!/icons/*", "!/img/*", "!/brand/*"] },
+  "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": ["/*", "!/site.css", "!/home.css", "!/home.js", "!/portal.js", "!/crop.js", "!/favicon*", "!/apple-touch-icon.png", "!/icon-*", "!/site.webmanifest", "!/icons/*", "!/img/*", "!/brand/*"] },
   // The docs are bundled as text so the site, the MCP server and the plugin share one source.
   "rules": [{ "type": "Text", "globs": ["**/*.md"], "fallthrough": true }],
   // Players, sign-in, games, plays, scores and the Hall of Fame. The Worker applies its own schema.

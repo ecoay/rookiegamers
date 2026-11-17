@@ -8,6 +8,7 @@ export const ORG = {
   '@id': 'https://rookiegamers.com/#org',
   name: 'RookieGamers',
   url: 'https://rookiegamers.com/',
+  logo: 'https://rookiegamers.com/brand/rookiegamers-logo-512.png',
   parentOrganization: { '@type': 'Organization', name: 'Tenacié LLC' },
 };
 

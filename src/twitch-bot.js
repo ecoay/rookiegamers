@@ -48,12 +48,35 @@ function callback(env) {
 
 async function authorize(req, env, DB, url, returned) {
   const player = await sessionPlayer(DB, req);
-  if (!player) return redirect('/signin?next=' + encodeURIComponent(url.pathname + url.search));
-  const linked = await DB.prepare("SELECT subject FROM identities WHERE player_id = ? AND provider = 'twitch'").bind(player).first();
   const state = cookies(req)[STATE_COOKIE]?.split('.');
   const role = returned ? state?.[1] : url.searchParams.get('role') === 'bot' ? 'bot' : 'channel';
+  if (role !== 'bot' && role !== 'channel') return json({ error: 'Twitch authorization expired.' }, 400);
+  const ticket = url.searchParams.get('ticket');
+  const pair = role === 'bot' && !returned && url.searchParams.get('pair') === '1';
+  const admin = isAdmin(env, player);
+  if (pair) {
+    if (!admin) return redirect('/signin?next=' + encodeURIComponent(url.pathname + url.search));
+    const key = crypto.randomUUID();
+    await DB.prepare('DELETE FROM twitch_bot_authorizations WHERE expires_at < ?').bind(Date.now()).run();
+    await DB.prepare('INSERT INTO twitch_bot_authorizations (hash, kind, expires_at) VALUES (?, ?, ?)')
+      .bind(await sha256(key), 'ticket', Date.now() + 300000).run();
+    return json({ url: new URL(ROOT + '/authorize?role=bot&ticket=' + key, env.SITE_URL).href });
+  }
+  const credential = !returned ? ticket : state?.[3] === 'device' ? state[0] : null;
+  if (returned && state?.[3] === 'device' && (!url.searchParams.get('code') || state[0] !== url.searchParams.get('state'))) {
+    return json({ error: 'Twitch authorization expired or was cancelled.' }, 400);
+  }
+  let paired = false;
+  if (role === 'bot' && credential && /^[0-9a-f-]{36}$/.test(credential)) {
+    const result = await DB.prepare('DELETE FROM twitch_bot_authorizations WHERE hash = ? AND kind = ? AND expires_at > ?')
+      .bind(await sha256(credential), returned ? 'state' : 'ticket', Date.now()).run();
+    paired = result.meta.changes === 1;
+    if (!paired) return json({ error: 'The bot authorization link expired or was already used.' }, 403);
+  }
+  if (!player && !paired) return redirect('/signin?next=' + encodeURIComponent(url.pathname + url.search));
+  const linked = role === 'channel' ? await DB.prepare("SELECT subject FROM identities WHERE player_id = ? AND provider = 'twitch'").bind(player).first() : null;
   const botId = await getBotId(env, DB);
-  if (role === 'bot' && !isAdmin(env, player)) return json({ error: 'Only a Rookie Gamers admin can authorize the bot account.' }, 403);
+  if (role === 'bot' && !admin && !paired) return json({ error: 'Only a Rookie Gamers admin can authorize the bot account.' }, 403);
   if (role === 'channel' && (!botId || !VALID_ID.test(linked?.subject || ''))) {
     return json({ error: botId ? 'Link Twitch on Rookie Gamers first.' : 'The Rookie Gamers bot account is awaiting authorization.' }, 409);
   }
@@ -61,9 +84,11 @@ async function authorize(req, env, DB, url, returned) {
   const scope = role === 'bot' ? 'user:read:chat user:write:chat user:bot' : 'channel:bot';
   if (!returned) {
     const nonce = crypto.randomUUID();
+    if (paired) await DB.prepare('INSERT INTO twitch_bot_authorizations (hash, kind, expires_at) VALUES (?, ?, ?)')
+      .bind(await sha256(nonce), 'state', Date.now() + 600000).run();
     const target = new URL(AUTH + '/authorize');
     target.search = new URLSearchParams({ client_id: env.TWITCH_BOT_CLIENT_ID, redirect_uri: callback(env), response_type: 'code', scope, state: nonce, force_verify: 'true' });
-    return redirect(target.href, [setCookie(req, STATE_COOKIE, [nonce, role, expected].join('.'), 600)]);
+    return redirect(target.href, [setCookie(req, STATE_COOKIE, [nonce, role, expected, paired ? 'device' : ''].join('.'), 600)]);
   }
   const code = url.searchParams.get('code');
   if (!code || !state || state[0] !== url.searchParams.get('state') || state[2] !== expected) {

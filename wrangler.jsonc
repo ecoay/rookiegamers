@@ -5,6 +5,10 @@
   "compatibility_date": "2025-09-01",
   // Serve on rookiegamers.<account>.workers.dev until rookiegamers.com points at Cloudflare.
   "workers_dev": true,
+  "routes": [
+    { "pattern": "rookiegamers.com", "custom_domain": true },
+    { "pattern": "games.rookiegamers.com", "custom_domain": true }
+  ],
   "preview_urls": true,
   // Static files: site.css, portal.js and the SDK at /sdk/v1.js. Pages and APIs run in the Worker.
   // Plain files (styles, scripts, icons, images) are served straight from the nearest edge without
@@ -25,7 +29,7 @@
   // Connect provider OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET (optional OIDC_NAME, OIDC_ID).
   // GAMES_HOST: hosted games are served from their own origin (a custom domain on this Worker,
   // attached in the dashboard like rookiegamers.com), so they get normal browser storage.
-  "vars": { "SITE_URL": "https://rookiegamers.com", "EMAIL_FROM": "RookieGamers <login@rookiegamers.com>", "OPEN_DEVELOPERS": "0", "GAMES_HOST": "games.rookiegamers.com" },
+  "vars": { "SITE_URL": "https://rookiegamers.com", "TWITCH_BOT_CLIENT_ID": "1ukma08rjj12pgm7z8alks203d6rbn", "EMAIL_FROM": "RookieGamers <login@rookiegamers.com>", "OPEN_DEVELOPERS": "0", "GAMES_HOST": "games.rookiegamers.com" },
   "observability": { "enabled": true },
   // Smart Placement: Cloudflare runs the Worker near the database when that is faster than running
   // it near the player. Pages make several database trips each, so a player in Bangkok waits for

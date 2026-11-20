@@ -156,12 +156,15 @@ async function processEvent(env, DB, signed) {
   if (liveLookup && !liveLookup.ok) throw new Error('Twitch stream lookup failed');
   const live = liveLookup ? (await liveLookup.json()).data?.[0] : null;
   const game = live ? [live.game_name, live.title, ...(live.tags || [])].join(' ') : '';
-  const byf = /buy[\s_-]*your[\s_-]*friends/i.test(game);
+  const wanted = /\[rg:([a-z0-9-]{1,32})\]/i.exec(live?.title || '')?.[1].toLowerCase();
+  const listed = wanted ? await DB.prepare('SELECT slug FROM games WHERE slug = ? AND live = 1').bind(wanted).first() : null;
+  const slug = listed?.slug || (/buy[\s_-]*your[\s_-]*friends/i.test(game) ? 'buyyourfriends' : null);
+  const isLive = subscription.type === 'stream.online' || Boolean(live);
   await DB.prepare(`UPDATE twitch_bot_channels SET login = ?, display_name = ?, stream_title = ?, game_slug = ?, live = ?,
     updated_at = ?, last_live_at = CASE WHEN live = 1 AND ? = 0 THEN ? ELSE last_live_at END WHERE id = ? AND updated_at < ?`)
-    .bind(event.broadcaster_user_login, event.broadcaster_user_name, live?.title ?? '', byf ? 'buyyourfriends' : null,
-      live ? 1 : 0, time, live ? 1 : 0, time, channel, time).run();
-  await relay(env, DB, { id: channel, login: event.broadcaster_user_login, name: event.broadcaster_user_name, at, live: Boolean(live) });
+    .bind(event.broadcaster_user_login, event.broadcaster_user_name, live?.title ?? '', slug,
+      isLive ? 1 : 0, time, isLive ? 1 : 0, time, channel, time).run();
+  await relay(env, DB, { id: channel, login: event.broadcaster_user_login, name: event.broadcaster_user_name, at, live: isLive });
 }
 
 export async function twitchBotRoute(req, env, DB, url) {

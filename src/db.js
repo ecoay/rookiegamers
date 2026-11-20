@@ -7,6 +7,12 @@ import { ICON, iconURI, refundRetired, keepWornRookie } from './icons.js';
 import { FRAME } from './frames.js';
 
 const SCHEMA = [
+  `CREATE TABLE IF NOT EXISTS twitch_bot_channels (id TEXT PRIMARY KEY, login TEXT, display_name TEXT,
+    stream_title TEXT, game_slug TEXT, live INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL DEFAULT 0, last_live_at INTEGER)`,
+  `CREATE TABLE IF NOT EXISTS twitch_bot_receipts (channel TEXT NOT NULL, message TEXT NOT NULL,
+    at INTEGER NOT NULL, PRIMARY KEY (channel, message))`,
+  `CREATE INDEX IF NOT EXISTS twitch_bot_receipts_at ON twitch_bot_receipts(at)`,
   `CREATE TABLE IF NOT EXISTS players (id TEXT PRIMARY KEY, name TEXT NOT NULL, hue INTEGER NOT NULL DEFAULT 0, email TEXT UNIQUE,
     xp INTEGER NOT NULL DEFAULT 0, title TEXT, adult_at INTEGER, gems INTEGER NOT NULL DEFAULT 0, referred_by TEXT, ref_paid INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL, seen_at INTEGER NOT NULL)`,

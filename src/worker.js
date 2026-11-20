@@ -12,6 +12,7 @@ import { archiveMonth } from './play.js';
 import { siteURL, contentType, previewSig } from './dev.js';
 import { stripeWebhook, moneyPage } from './money-api.js';
 import { monthlyMoney } from './money.js';
+import { drainTwitchQueue, twitchBotRoute } from './twitch-bot.js';
 import { ROBOTS_TXT, LLMS_TXT, LLMS_FULL_TXT } from './seo/files.js';
 import { liveCatalog, sitemapXML, llmsGameLines, llmsFullGameLines, adsTxt } from './seo/dynamic.js';
 
@@ -92,6 +93,7 @@ async function handle(req, env, ctx) {
   }
 
   try {
+    if (path.startsWith('/api/twitch-bot/')) return twitchBotRoute(req, env, DB, url);
     const text = (body, type = 'text/plain') => new Response(body, { headers: { 'content-type': `${type}; charset=utf-8`, 'cache-control': 'public, max-age=600' } });
     if (path === '/robots.txt') return text(ROBOTS_TXT);
     if (path === '/ads.txt') return text(adsTxt(env));
@@ -175,6 +177,11 @@ export default {
 
   // Just after midnight UTC on the 1st, seal last month into the Hall of Fame.
   async scheduled(event, env, ctx) {
+    if (event.cron === "* * * * *") {
+      const DB = await Promise.resolve(db(env));
+      ctx.waitUntil(drainTwitchQueue(env, DB));
+      return;
+    }
     const DB = await Promise.resolve(db(env)).catch(() => null);
     // Then close last month's sponsor ads and pay developers.
     if (DB) ctx.waitUntil(archiveMonth(DB, prevMonth(monthKey())).then(() => monthlyMoney(DB, env, prevMonth(monthKey()))));

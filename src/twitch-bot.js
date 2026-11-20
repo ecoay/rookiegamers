@@ -48,7 +48,7 @@ function callback(env) {
 
 async function authorize(req, env, DB, url, returned) {
   const player = await sessionPlayer(DB, req);
-  if (!player) return redirect('/login?next=' + encodeURIComponent(url.pathname + url.search));
+  if (!player) return redirect('/signin?next=' + encodeURIComponent(url.pathname + url.search));
   const linked = await DB.prepare("SELECT subject FROM identities WHERE player_id = ? AND provider = 'twitch'").bind(player).first();
   const state = cookies(req)[STATE_COOKIE]?.split('.');
   const role = returned ? state?.[1] : url.searchParams.get('role') === 'bot' ? 'bot' : 'channel';

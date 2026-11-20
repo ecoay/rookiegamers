@@ -37,6 +37,11 @@ async function helix(env, path, body) {
   return response;
 }
 
+async function getBotId(env, DB) {
+  if (VALID_ID.test(env.TWITCH_BOT_USER_ID || '')) return env.TWITCH_BOT_USER_ID;
+  return (await DB.prepare('SELECT user_id FROM twitch_bot_identity WHERE singleton = 1').first())?.user_id ?? null;
+}
+
 function callback(env) {
   return new URL(ROOT + '/authorize/callback', env.SITE_URL).href;
 }
@@ -47,8 +52,12 @@ async function authorize(req, env, DB, url, returned) {
   const linked = await DB.prepare("SELECT subject FROM identities WHERE player_id = ? AND provider = 'twitch'").bind(player).first();
   const state = cookies(req)[STATE_COOKIE]?.split('.');
   const role = returned ? state?.[1] : url.searchParams.get('role') === 'bot' ? 'bot' : 'channel';
-  const expected = role === 'bot' ? (isAdmin(env, player) ? env.TWITCH_BOT_USER_ID : null) : linked?.subject;
-  if (!VALID_ID.test(expected || '')) return json({ error: 'Connect the correct Twitch account first.' }, 403);
+  const botId = await getBotId(env, DB);
+  if (role === 'bot' && !isAdmin(env, player)) return json({ error: 'Only a Rookie Gamers admin can authorize the bot account.' }, 403);
+  if (role === 'channel' && (!botId || !VALID_ID.test(linked?.subject || ''))) {
+    return json({ error: botId ? 'Link Twitch on Rookie Gamers first.' : 'The Rookie Gamers bot account is awaiting authorization.' }, 409);
+  }
+  const expected = role === 'bot' ? botId ?? 'first' : linked.subject;
   const scope = role === 'bot' ? 'user:read:chat user:write:chat user:bot' : 'channel:bot';
   if (!returned) {
     const nonce = crypto.randomUUID();
@@ -65,14 +74,20 @@ async function authorize(req, env, DB, url, returned) {
   const { access_token } = await exchanged.json();
   const checked = await fetch(AUTH + '/validate', { headers: { authorization: 'OAuth ' + access_token }, signal: AbortSignal.timeout(2500) });
   const grant = checked.ok ? await checked.json() : null;
-  if (grant?.user_id !== expected || !scope.split(' ').every(s => grant.scopes?.includes(s))) {
+  if (!VALID_ID.test(grant?.user_id || '') || (expected !== 'first' && grant.user_id !== expected) ||
+      !scope.split(' ').every(s => grant.scopes?.includes(s))) {
     return json({ error: 'Authorize using the Twitch account expected for this connection.' }, 403);
+  }
+  if (role === 'bot') {
+    await DB.prepare('INSERT INTO twitch_bot_identity (singleton, user_id) VALUES (1, ?) ON CONFLICT DO NOTHING')
+      .bind(grant.user_id).run();
+    if ((await getBotId(env, DB)) !== grant.user_id) return json({ error: 'Another Twitch account is already configured for this bot.' }, 409);
   }
   if (role === 'channel') {
     await DB.prepare('INSERT INTO twitch_bot_channels (id) VALUES (?) ON CONFLICT DO NOTHING').bind(expected).run();
     for (const [type, version] of [['channel.chat.message', '1'], ['stream.online', '1'], ['stream.offline', '1'], ['channel.update', '2']]) {
       const condition = { broadcaster_user_id: expected };
-      if (type === 'channel.chat.message') condition.user_id = env.TWITCH_BOT_USER_ID;
+      if (type === 'channel.chat.message') condition.user_id = botId;
       const response = await helix(env, '/eventsub/subscriptions', { type, version, condition, transport: {
         method: 'webhook', callback: new URL(ROOT + '/events', env.SITE_URL).href, secret: env.TWITCH_EVENTSUB_SECRET,
       } });
@@ -115,7 +130,7 @@ async function relay(env, DB, profile) {
 }
 
 export async function drainTwitchQueue(env, DB) {
-  if (env.TWITCH_BOT_USER_ID) await relay(env, DB, { type: 'drain' });
+  if (await getBotId(env, DB)) await relay(env, DB, { type: 'drain' });
 }
 
 async function processEvent(env, DB, signed) {
@@ -126,9 +141,10 @@ async function processEvent(env, DB, signed) {
   const registered = await DB.prepare('SELECT live FROM twitch_bot_channels WHERE id = ?').bind(channel).first();
   if (!registered) return;
   if (subscription.type === 'channel.chat.message') {
+    const botId = await getBotId(env, DB);
     const command = typeof event.message?.text === 'string' ? event.message.text.trim().toLowerCase() : '';
-    if (subscription.condition.user_id !== env.TWITCH_BOT_USER_ID ||
-        event.chatter_user_id === env.TWITCH_BOT_USER_ID ||
+    if (!botId || subscription.condition.user_id !== botId ||
+        event.chatter_user_id === botId ||
         (event.source_broadcaster_user_id && event.source_broadcaster_user_id !== channel) ||
         !['!addme', '!snipeme', '!pumpme'].includes(command) ||
         !VALID_ID.test(event.chatter_user_id || '') || !event.message_id) return;
@@ -144,7 +160,7 @@ async function processEvent(env, DB, signed) {
       .bind(channel, event.message_id, time).run();
     if (!inserted.meta.changes) return;
     await DB.prepare('DELETE FROM twitch_bot_receipts WHERE at < ?').bind(Date.now() - 86400000).run();
-    const reply = await helix(env, '/chat/messages', { broadcaster_id: channel, sender_id: env.TWITCH_BOT_USER_ID,
+    const reply = await helix(env, '/chat/messages', { broadcaster_id: channel, sender_id: botId,
       reply_parent_message_id: event.message_id, for_source_only: true,
       message });
     if (!reply.ok || !(await reply.json()).data?.[0]?.is_sent) console.warn('Twitch chat confirmation dropped', reply.status);
@@ -174,8 +190,8 @@ export async function twitchBotRoute(req, env, DB, url) {
        WHERE live = 1 AND game_slug IS NOT NULL ORDER BY updated_at DESC LIMIT 100`).all();
     return json({ streams: results }, 200, { 'access-control-allow-origin': '*', 'cache-control': 'public, max-age=30' });
   }
-  if (!env.TWITCH_BOT_CLIENT_ID || !env.TWITCH_BOT_CLIENT_SECRET || !env.TWITCH_EVENTSUB_SECRET ||
-      !VALID_ID.test(env.TWITCH_BOT_USER_ID || '')) return json({ error: 'Twitch bot is not configured.' }, 503);
+  if (!env.TWITCH_BOT_CLIENT_ID || !env.TWITCH_BOT_CLIENT_SECRET || !env.TWITCH_EVENTSUB_SECRET) return json({ error: 'Twitch bot is not configured.' }, 503);
+  if (path === '/status' && req.method === 'GET') return json({ ready: Boolean(await getBotId(env, DB)) });
   if ((path === '/authorize' || path === '/authorize/callback') && req.method === 'GET') {
     return authorize(req, env, DB, url, path.endsWith('/callback'));
   }

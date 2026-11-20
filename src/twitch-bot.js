@@ -1,0 +1,190 @@
+import { cookies, redirect, sessionPlayer, setCookie } from './auth.js';
+import { isAdmin } from './admin.js';
+import { json } from './api.js';
+import { sha256 } from './db.js';
+import { signToken } from './tokens.js';
+
+const AUTH = 'https://id.twitch.tv/oauth2';
+const HELIX = 'https://api.twitch.tv/helix';
+const ROOT = '/api/twitch-bot';
+const STATE_COOKIE = 'rg_twitch_bot_state';
+const VALID_ID = /^\d{1,32}$/;
+const encoder = new TextEncoder();
+let appToken;
+
+function tokenRequest(env, fields) {
+  return fetch(AUTH + '/token', {
+    method: 'POST',
+    body: new URLSearchParams({ client_id: env.TWITCH_BOT_CLIENT_ID, client_secret: env.TWITCH_BOT_CLIENT_SECRET, ...fields }),
+    signal: AbortSignal.timeout(2500),
+  });
+}
+
+async function helix(env, path, body) {
+  if (!appToken || appToken.client !== env.TWITCH_BOT_CLIENT_ID || appToken.expires < Date.now()) {
+    const response = await tokenRequest(env, { grant_type: 'client_credentials' });
+    if (!response.ok) throw new Error('Twitch bot authentication failed');
+    const result = await response.json();
+    appToken = { client: env.TWITCH_BOT_CLIENT_ID, value: result.access_token, expires: Date.now() + (result.expires_in - 60) * 1000 };
+  }
+  const response = await fetch(HELIX + path, {
+    method: body ? 'POST' : 'GET',
+    headers: { 'client-id': env.TWITCH_BOT_CLIENT_ID, authorization: 'Bearer ' + appToken.value, 'content-type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(2500),
+  });
+  if (response.status === 401) appToken = undefined;
+  return response;
+}
+
+function callback(env) {
+  return new URL(ROOT + '/authorize/callback', env.SITE_URL).href;
+}
+
+async function authorize(req, env, DB, url, returned) {
+  const player = await sessionPlayer(DB, req);
+  if (!player) return redirect('/login?next=' + encodeURIComponent(url.pathname + url.search));
+  const linked = await DB.prepare("SELECT subject FROM identities WHERE player_id = ? AND provider = 'twitch'").bind(player).first();
+  const state = cookies(req)[STATE_COOKIE]?.split('.');
+  const role = returned ? state?.[1] : url.searchParams.get('role') === 'bot' ? 'bot' : 'channel';
+  const expected = role === 'bot' ? (isAdmin(env, player) ? env.TWITCH_BOT_USER_ID : null) : linked?.subject;
+  if (!VALID_ID.test(expected || '')) return json({ error: 'Connect the correct Twitch account first.' }, 403);
+  const scope = role === 'bot' ? 'user:read:chat user:write:chat user:bot' : 'channel:bot';
+  if (!returned) {
+    const nonce = crypto.randomUUID();
+    const target = new URL(AUTH + '/authorize');
+    target.search = new URLSearchParams({ client_id: env.TWITCH_BOT_CLIENT_ID, redirect_uri: callback(env), response_type: 'code', scope, state: nonce, force_verify: 'true' });
+    return redirect(target.href, [setCookie(req, STATE_COOKIE, [nonce, role, expected].join('.'), 600)]);
+  }
+  const code = url.searchParams.get('code');
+  if (!code || !state || state[0] !== url.searchParams.get('state') || state[2] !== expected) {
+    return json({ error: 'Twitch authorization expired or was cancelled.' }, 400);
+  }
+  const exchanged = await tokenRequest(env, { grant_type: 'authorization_code', code, redirect_uri: callback(env) });
+  if (!exchanged.ok) return json({ error: 'Twitch authorization failed.' }, 502);
+  const { access_token } = await exchanged.json();
+  const checked = await fetch(AUTH + '/validate', { headers: { authorization: 'OAuth ' + access_token }, signal: AbortSignal.timeout(2500) });
+  const grant = checked.ok ? await checked.json() : null;
+  if (grant?.user_id !== expected || !scope.split(' ').every(s => grant.scopes?.includes(s))) {
+    return json({ error: 'Authorize using the Twitch account expected for this connection.' }, 403);
+  }
+  if (role === 'channel') {
+    await DB.prepare('INSERT INTO twitch_bot_channels (id) VALUES (?) ON CONFLICT DO NOTHING').bind(expected).run();
+    for (const [type, version] of [['channel.chat.message', '1'], ['stream.online', '1'], ['stream.offline', '1'], ['channel.update', '2']]) {
+      const condition = { broadcaster_user_id: expected };
+      if (type === 'channel.chat.message') condition.user_id = env.TWITCH_BOT_USER_ID;
+      const response = await helix(env, '/eventsub/subscriptions', { type, version, condition, transport: {
+        method: 'webhook', callback: new URL(ROOT + '/events', env.SITE_URL).href, secret: env.TWITCH_EVENTSUB_SECRET,
+      } });
+      if (!response.ok && response.status !== 409) return json({ error: 'Twitch subscription failed.', type, status: response.status }, 502);
+    }
+  }
+  return new Response(role === 'bot' ? 'Rookie Gamers Bot authorized.' : 'Your channel is connected to Rookie Gamers Bot.', {
+    headers: { 'content-type': 'text/plain', 'cache-control': 'no-store', 'set-cookie': setCookie(req, STATE_COOKIE, '', 0) },
+  });
+}
+
+async function eventPayload(req, secret) {
+  const id = req.headers.get('twitch-eventsub-message-id');
+  const at = req.headers.get('twitch-eventsub-message-timestamp');
+  const signature = req.headers.get('twitch-eventsub-message-signature');
+  const time = Date.parse(at || '');
+  if (!id || !Number.isFinite(time) || Math.abs(Date.now() - time) > 600000 || !/^sha256=[a-f0-9]{64}$/.test(signature || '')) return null;
+  const raw = new Uint8Array(await req.arrayBuffer());
+  const prefix = encoder.encode(id + at);
+  const bytes = new Uint8Array(prefix.length + raw.length);
+  bytes.set(prefix);
+  bytes.set(raw, prefix.length);
+  const key = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
+  const hash = Uint8Array.from(signature.slice(7).match(/../g), hex => parseInt(hex, 16));
+  if (!await crypto.subtle.verify('HMAC', key, hash, bytes)) return null;
+  try { return { data: JSON.parse(new TextDecoder().decode(raw)), at, time }; } catch { return null; }
+}
+
+async function relay(env, DB, profile) {
+  const body = JSON.stringify(profile);
+  const token = await signToken(DB, env, { aud: "buyyourfriends:twitch-relay", use: "twitch-relay", bodyHash: await sha256(body) }, 45);
+  const response = await fetch('https://buyyourfriends.com/api/twitch', {
+    method: 'POST',
+    headers: { authorization: 'RG-Twitch ' + token, 'content-type': 'application/json' },
+    body,
+    signal: AbortSignal.timeout(2500),
+  });
+  if (!response.ok) throw new Error('BYF Twitch market relay failed (' + response.status + ')');
+  return response.json();
+}
+
+export async function drainTwitchQueue(env, DB) {
+  if (env.TWITCH_BOT_USER_ID) await relay(env, DB, { type: 'drain' });
+}
+
+async function processEvent(env, DB, signed) {
+  const { data, at, time } = signed;
+  const { event, subscription } = data;
+  const channel = event?.broadcaster_user_id;
+  if (!VALID_ID.test(channel || '') || subscription?.condition?.broadcaster_user_id !== channel) return;
+  const registered = await DB.prepare('SELECT live FROM twitch_bot_channels WHERE id = ?').bind(channel).first();
+  if (!registered) return;
+  if (subscription.type === 'channel.chat.message') {
+    const command = typeof event.message?.text === 'string' ? event.message.text.trim().toLowerCase() : '';
+    if (subscription.condition.user_id !== env.TWITCH_BOT_USER_ID ||
+        event.chatter_user_id === env.TWITCH_BOT_USER_ID ||
+        (event.source_broadcaster_user_id && event.source_broadcaster_user_id !== channel) ||
+        !['!addme', '!snipeme', '!pumpme'].includes(command) ||
+        !VALID_ID.test(event.chatter_user_id || '') || !event.message_id) return;
+    const action = command === '!snipeme' ? 'snipe' : command === '!pumpme' ? 'pump' : undefined;
+    const { requestId } = await relay(env, DB, { id: event.chatter_user_id, login: event.chatter_user_login,
+      name: event.chatter_user_name, at, action, broadcaster: channel, messageId: event.message_id });
+    const message = !action
+      ? "You're in the Buy Your Friends Twitch market. Sign in through Rookie Gamers with this Twitch account to claim your listing."
+      : requestId
+        ? 'BYF request ' + requestId + '. Include this code with the streamer’s configured tip or event.'
+        : 'This channel has not enabled that BYF command.';
+    const inserted = await DB.prepare('INSERT INTO twitch_bot_receipts (channel, message, at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING')
+      .bind(channel, event.message_id, time).run();
+    if (!inserted.meta.changes) return;
+    await DB.prepare('DELETE FROM twitch_bot_receipts WHERE at < ?').bind(Date.now() - 86400000).run();
+    const reply = await helix(env, '/chat/messages', { broadcaster_id: channel, sender_id: env.TWITCH_BOT_USER_ID,
+      reply_parent_message_id: event.message_id, for_source_only: true,
+      message });
+    if (!reply.ok || !(await reply.json()).data?.[0]?.is_sent) console.warn('Twitch chat confirmation dropped', reply.status);
+    return;
+  }
+  if (!['stream.online', 'stream.offline', 'channel.update'].includes(subscription.type)) return;
+  const active = subscription.type !== 'stream.offline';
+  const liveLookup = active ? await helix(env, '/streams?user_id=' + channel) : null;
+  if (liveLookup && !liveLookup.ok) throw new Error('Twitch stream lookup failed');
+  const live = liveLookup ? (await liveLookup.json()).data?.[0] : null;
+  const game = live ? [live.game_name, live.title, ...(live.tags || [])].join(' ') : '';
+  const byf = /buy[\s_-]*your[\s_-]*friends/i.test(game);
+  await DB.prepare(`UPDATE twitch_bot_channels SET login = ?, display_name = ?, stream_title = ?, game_slug = ?, live = ?,
+    updated_at = ?, last_live_at = CASE WHEN live = 1 AND ? = 0 THEN ? ELSE last_live_at END WHERE id = ? AND updated_at < ?`)
+    .bind(event.broadcaster_user_login, event.broadcaster_user_name, live?.title ?? '', byf ? 'buyyourfriends' : null,
+      live ? 1 : 0, time, live ? 1 : 0, time, channel, time).run();
+  await relay(env, DB, { id: channel, login: event.broadcaster_user_login, name: event.broadcaster_user_name, at, live: Boolean(live) });
+}
+
+export async function twitchBotRoute(req, env, DB, url) {
+  const path = url.pathname.slice(ROOT.length);
+  if (path === '/streams' && req.method === 'GET') {
+    const { results } = await DB.prepare(`SELECT id, login, display_name, stream_title, game_slug FROM twitch_bot_channels
+       WHERE live = 1 AND game_slug IS NOT NULL ORDER BY updated_at DESC LIMIT 100`).all();
+    return json({ streams: results }, 200, { 'access-control-allow-origin': '*', 'cache-control': 'public, max-age=30' });
+  }
+  if (!env.TWITCH_BOT_CLIENT_ID || !env.TWITCH_BOT_CLIENT_SECRET || !env.TWITCH_EVENTSUB_SECRET ||
+      !VALID_ID.test(env.TWITCH_BOT_USER_ID || '')) return json({ error: 'Twitch bot is not configured.' }, 503);
+  if ((path === '/authorize' || path === '/authorize/callback') && req.method === 'GET') {
+    return authorize(req, env, DB, url, path.endsWith('/callback'));
+  }
+  if (path !== '/events' || req.method !== 'POST') return json({ error: 'Not found' }, 404);
+  const signed = await eventPayload(req, env.TWITCH_EVENTSUB_SECRET);
+  if (!signed) return json({ error: 'Invalid Twitch signature' }, 403);
+  const type = req.headers.get('twitch-eventsub-message-type');
+  if (type === 'webhook_callback_verification' && typeof signed.data.challenge === 'string') return new Response(signed.data.challenge);
+  if (type === 'notification') await processEvent(env, DB, signed);
+  if (type === 'revocation' && signed.data.subscription?.type === 'channel.chat.message') {
+    await DB.prepare("UPDATE twitch_bot_channels SET live = 0, game_slug = NULL WHERE id = ?")
+      .bind(signed.data.subscription.condition.broadcaster_user_id).run();
+  }
+  return new Response(null, { status: 204 });
+}

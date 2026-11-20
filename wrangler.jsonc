@@ -20,7 +20,7 @@
   // The deploy's version id: the database schema is applied once per deploy (src/db.js).
   "version_metadata": { "binding": "CF_VERSION_METADATA" },
   // 00:10 UTC on the 1st: seal last month's boards into the Hall of Fame.
-  "triggers": { "crons": ["10 0 1 * *"] },
+  "triggers": { "crons": ["10 0 1 * *", "* * * * *"] },
   // Secrets (dashboard, not here): RESEND_API_KEY, ADMIN_TOKEN, and for SceneSpot or any OpenID
   // Connect provider OIDC_ISSUER, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET (optional OIDC_NAME, OIDC_ID).
   // GAMES_HOST: hosted games are served from their own origin (a custom domain on this Worker,

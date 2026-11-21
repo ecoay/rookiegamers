@@ -72,6 +72,22 @@ export async function apiV1(req, env, DB, url) {
     return json(pid ? await mintFor(DB, env, pid, g.slug) : { token: null, user: null });
   }
 
+  // Every player on the portal, for a game built on players' accounts (Buy Your Friends'
+  // Rookie Gamers Island, where every account is a friend you can buy). Server to server, with
+  // the game's rgs_ key. Public profile fields only (id, name, avatar, level), never email or
+  // linked accounts. Paged by id: ?after=<last id>&limit=<1-1000>; next is null on the last page.
+  const pm = path.match(/^\/games\/([a-z0-9-]{1,32})\/players$/);
+  if (pm && method === 'GET') {
+    const g = await getGame(DB, pm[1]);
+    const auth = req.headers.get('authorization') || '';
+    if (!g || !/^Bearer rgs_/.test(auth) || !g.key_hash || await sha256(auth.slice(7).trim()) !== g.key_hash) return cjson({ error: 'Send the game\'s server key.' }, 401);
+    if (!g.social_accounts) return cjson({ error: 'Only games built on players\' accounts can list players.' }, 403);
+    const after = String(url.searchParams.get('after') || '');
+    const limit = Math.min(1000, Math.max(1, Math.floor(Number(url.searchParams.get('limit'))) || 500));
+    const rows = (await DB.prepare('SELECT * FROM players WHERE id > ? ORDER BY id LIMIT ?').bind(after, limit).all()).results;
+    const players = rows.map(p => { const v = publicPlayer(p); return { id: v.id, name: v.name, avatar: v.avatar, level: v.level }; });
+    return cjson({ players, next: rows.length === limit ? rows[rows.length - 1].id : null });
+  }
   if (path.startsWith('/games/') && method === 'GET') {
     const g = await getGame(DB, path.slice(7));
     return g && g.live ? cjson({ game: gameView(g) }) : cjson({ error: 'Unknown game.' }, 404);

@@ -37,6 +37,19 @@ async function helix(env, path, body) {
   return response;
 }
 
+// Public Twitch profiles (id, login, picture) for up to 100 user ids, with the bot's app login.
+// For Buy Your Friends' Twitch Island, whose viewers arrive from chat without a picture.
+export async function twitchProfiles(env, ids) {
+  const wanted = [...new Set(ids.filter(id => VALID_ID.test(id)))].slice(0, 100);
+  if (!wanted.length || !env.TWITCH_BOT_CLIENT_ID || !env.TWITCH_BOT_CLIENT_SECRET) return [];
+  const response = await helix(env, '/users?' + wanted.map(id => 'id=' + id).join('&'));
+  if (!response.ok) throw new Error('Twitch users lookup failed (' + response.status + ')');
+  const { data } = await response.json();
+  return (Array.isArray(data) ? data : [])
+    .filter(u => VALID_ID.test(String(u.id)))
+    .map(u => ({ id: String(u.id), login: String(u.login || ''), avatar: /^https:\/\//.test(u.profile_image_url || '') ? u.profile_image_url : null }));
+}
+
 async function getBotId(env, DB) {
   if (VALID_ID.test(env.TWITCH_BOT_USER_ID || '')) return env.TWITCH_BOT_USER_ID;
   return (await DB.prepare('SELECT user_id FROM twitch_bot_identity WHERE singleton = 1').first())?.user_id ?? null;

@@ -53,6 +53,40 @@ test('a game built on accounts lists every player, a page at a time, public fiel
   assert.doesNotMatch(text, /@example\.com|amy_x/);
 });
 
+test('Twitch profile pictures for up to 100 ids, with the server key, public fields only', async () => {
+  const { env } = await setup();
+  env.TWITCH_BOT_CLIENT_ID = 'cid';
+  env.TWITCH_BOT_CLIENT_SECRET = 'secret';
+  const realFetch = globalThis.fetch;
+  let asked = '';
+  globalThis.fetch = async (input) => {
+    const url = String(typeof input === 'string' ? input : input.url);
+    if (url.startsWith('https://id.twitch.tv/oauth2/token')) return Response.json({ access_token: 'app', expires_in: 3600 });
+    if (url.startsWith('https://api.twitch.tv/helix/users')) {
+      asked = url;
+      return Response.json({ data: [
+        { id: '111', login: 'viewerone', profile_image_url: 'https://static-cdn.jtvnw.net/a.png', email: 'x@example.com' },
+        { id: '222', login: 'viewertwo', profile_image_url: 'http://insecure.example/b.png' },
+      ] });
+    }
+    return realFetch(input);
+  };
+  try {
+    const res = await call(env, '/games/buyyourfriends/twitch-users?ids=111,222,bad,111');
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(asked, 'https://api.twitch.tv/helix/users?id=111&id=222');
+    assert.deepEqual(body.users, [
+      { id: '111', login: 'viewerone', avatar: 'https://static-cdn.jtvnw.net/a.png' },
+      { id: '222', login: 'viewertwo', avatar: null },
+    ]);
+    assert.equal((await call(env, '/games/buyyourfriends/twitch-users?ids=111', null)).status, 401);
+    assert.equal((await call(env, '/games/plain/twitch-users?ids=111')).status, 403);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
 test('it needs the game\'s server key, and only games built on accounts can use it', async () => {
   const { env } = await setup();
   assert.equal((await call(env, '/games/buyyourfriends/players', null)).status, 401);

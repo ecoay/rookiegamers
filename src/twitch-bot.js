@@ -168,7 +168,27 @@ async function relay(env, DB, profile) {
 }
 
 export async function drainTwitchQueue(env, DB) {
-  if (await getBotId(env, DB)) await relay(env, DB, { type: 'drain' });
+  const botId = await getBotId(env, DB);
+  if (!botId) return;
+  const [queue, chat] = await Promise.allSettled([
+    relay(env, DB, { type: 'drain' }),
+    relay(env, DB, { type: 'snipe-chat' }),
+  ]);
+  if (chat.status === 'rejected') throw chat.reason;
+  const { messages = [] } = chat.value;
+  const outcomes = await Promise.allSettled(messages.map(async ({ channel, message }) => {
+    const live = await DB.prepare('SELECT live FROM twitch_bot_channels WHERE id = ?')
+      .bind(channel).first();
+    if (!live?.live) return;
+    const reply = await helix(env, '/chat/messages', {
+      broadcaster_id: channel, sender_id: botId, message, for_source_only: true,
+    });
+    if (!reply.ok || !(await reply.json()).data?.[0]?.is_sent) {
+      throw new Error('Twitch did not send the snipe notification');
+    }
+  }));
+  if (outcomes.some(outcome => outcome.status === 'rejected')) console.warn('Twitch snipe notification dropped');
+  if (queue.status === 'rejected') throw queue.reason;
 }
 
 async function processEvent(env, DB, signed) {

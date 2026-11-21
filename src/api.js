@@ -88,6 +88,23 @@ export async function apiV1(req, env, DB, url) {
     const players = rows.map(p => { const v = publicPlayer(p); return { id: v.id, name: v.name, avatar: v.avatar, level: v.level }; });
     return cjson({ players, next: rows.length === limit ? rows[rows.length - 1].id : null });
   }
+  // Twitch profile pictures for a game built on players' accounts (Buy Your Friends' Twitch
+  // Island): ?ids=1,2,3 (up to 100). Server to server with the game's rgs_ key; public fields only.
+  const tm = path.match(/^\/games\/([a-z0-9-]{1,32})\/twitch-users$/);
+  if (tm && method === 'GET') {
+    const g = await getGame(DB, tm[1]);
+    const auth = req.headers.get('authorization') || '';
+    if (!g || !/^Bearer rgs_/.test(auth) || !g.key_hash || await sha256(auth.slice(7).trim()) !== g.key_hash) return cjson({ error: 'Send the game\'s server key.' }, 401);
+    if (!g.social_accounts) return cjson({ error: 'Only games built on players\' accounts can look up Twitch users.' }, 403);
+    const ids = String(url.searchParams.get('ids') || '').split(',').map(s => s.trim()).filter(Boolean);
+    try {
+      // Loaded here, not at the top: twitch-bot.js pulls in the admin pages.
+      const { twitchProfiles } = await import('./twitch-bot.js');
+      return cjson({ users: await twitchProfiles(env, ids) });
+    } catch {
+      return cjson({ error: 'Twitch didn\'t answer. Try again later.' }, 502);
+    }
+  }
   if (path.startsWith('/games/') && method === 'GET') {
     const g = await getGame(DB, path.slice(7));
     return g && g.live ? cjson({ game: gameView(g) }) : cjson({ error: 'Unknown game.' }, 404);

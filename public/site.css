@@ -162,3 +162,17 @@ html.rg-fill,html.rg-fill body{overflow:hidden;overscroll-behavior:none}
 .stage.fill{box-sizing:border-box;position:fixed;inset:0;z-index:1000;width:100vw;height:100vh;height:100dvh;max-height:none;aspect-ratio:auto;border:0;border-radius:0;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
 .fill-exit{position:absolute;top:calc(env(safe-area-inset-top) + 8px);right:calc(env(safe-area-inset-right) + 8px);z-index:2;font:600 13px/1 system-ui,sans-serif;color:#fff;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.25);border-radius:999px;padding:8px 12px;cursor:pointer;opacity:.75}
 .fill-exit:hover,.fill-exit:focus-visible{opacity:1}
+/* /play/<slug>/popout: the game fills its own tab under one slim bar. */
+html.pop,body.pop{height:100%;overflow:hidden;overscroll-behavior:none}
+body.pop{display:flex;flex-direction:column;height:100vh;height:100dvh}
+.popbar{flex:0 0 auto;display:flex;align-items:center;gap:10px;height:40px;padding:0 max(10px,env(safe-area-inset-right)) 0 max(10px,env(safe-area-inset-left));padding-top:env(safe-area-inset-top);background:#0b0a11;border-bottom:1px solid var(--line);font-size:14px}
+.popbar .poplogo{display:flex;flex:0 0 auto}.popbar .poplogo img{display:block;border-radius:6px}
+.popbar .poptitle{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:0 1 auto}
+.popbar .acts{display:flex;align-items:center;gap:6px;margin-left:auto;flex:0 0 auto}
+.popbar .btn.small{padding:5px 10px;font-size:13px}
+.popbar .me .av img,.popbar .me img{width:24px;height:24px}
+.popad{display:flex;align-items:center;gap:8px;min-width:0;flex:0 1 auto;margin-left:12px;color:var(--text);text-decoration:none}
+.popad video{width:54px;height:30px;object-fit:cover;border-radius:5px;background:#000;flex:0 0 auto}
+.popad span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.popad small{color:var(--dim);flex:0 0 auto}
+.stage.popstage{flex:1 1 auto;min-height:0;aspect-ratio:auto;max-height:none;border:0;border-radius:0}
+@media (max-width:700px){.popad,.popbar .poptitle,.popbar #shareBtn{display:none}}

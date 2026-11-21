@@ -524,3 +524,23 @@ test('GA4 stays on /u/*, /s/* and the 404 page', async () => {
   assert.equal(missing.status, 404);
   assertGa4Head(await missing.text(), '404');
 });
+
+/* ---------- /play/<slug>/popout: the game alone in its own tab under a slim bar ---------- */
+test('/play/<slug>/popout frames the game under a slim bar and points back to the game page', async () => {
+  const env = await setup();
+  const page = await (await get(env, '/play/unsays')).text();
+  assert.match(page, /id="popBtn" href="\/play\/unsays\/popout"/);
+  const res = await get(env, '/play/unsays/popout?ref=fishtarttycoon');
+  assert.equal(res.status, 200);
+  const html = await res.text();
+  assert.match(html, /<header class="popbar">/);
+  assert.match(html, /<iframe id="game"[^>]*src="[^"]*rg_ref=fishtarttycoon/);
+  assert.match(html, /id="soundBtn"/);
+  assert.match(html, /id="rgBanner" data-slim/);
+  assert.match(html, /id="signinDlg"/);
+  assert.match(html, /"popout":true/);
+  assert.match(html, /<meta name="robots" content="noindex,follow">/);
+  assert.match(html, new RegExp(`<link rel="canonical" href="${SITE}/play/unsays">`));
+  assert.doesNotMatch(html, /<header class="top">/);
+  assert.equal((await get(env, '/play/nope/popout')).status, 404);
+});

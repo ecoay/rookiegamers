@@ -169,6 +169,17 @@
     try {
       const r = await (await fetch('/api/v1/ads/banner?game=' + encodeURIComponent(B.game))).json();
       if (!r.clip) return;
+      // The pop-out tab's slim bar: a small clip and a link, one line high.
+      if (box.hasAttribute('data-slim')) {
+        const a = document.createElement('a'); a.className = 'popad'; a.href = B.popout ? r.clip.play.replace(/(\/play\/[a-z0-9-]+)/, '$1/popout') : r.clip.play; a.title = 'Play ' + r.clip.gameTitle;
+        const v = document.createElement('video');
+        v.src = r.clip.url; v.muted = true; v.autoplay = true; v.loop = true; v.playsInline = true; v.setAttribute('playsinline', '');
+        const t = document.createElement('span'); t.textContent = 'Play ' + r.clip.gameTitle;
+        const tag = document.createElement('small'); tag.textContent = r.promoted ? 'Sponsored' : 'Featured';
+        a.append(v, t, tag);
+        box.replaceWith(a);
+        return;
+      }
       const h = document.createElement('h3');
       const t = document.createElement('span'); t.textContent = r.clip.gameTitle;
       const tag = document.createElement('span'); tag.className = 'muted small'; tag.textContent = r.promoted ? 'Sponsored' : 'Featured';
@@ -214,7 +225,7 @@
         if (m.data && m.data.event === 'stop') setTimeout(refreshBoards, 1500);
         return;
       case 'go':
-        if (m.data && /^[a-z0-9-]{1,32}$/.test(m.data.slug)) location.href = '/play/' + m.data.slug + '?ref=' + B.game;
+        if (m.data && /^[a-z0-9-]{1,32}$/.test(m.data.slug)) location.href = '/play/' + m.data.slug + (B.popout ? '/popout' : '') + '?ref=' + B.game;
         return;
     }
   });
@@ -263,6 +274,24 @@
   // keyboard) Safari covers it with "It looks like you are typing while in full screen" and kicks the
   // player out. So there we fill the screen with the game ourselves instead: same button, same
   // effect, and typing just works. Everywhere else keeps the real full screen.
+  // Pop out: the game opens alone in its own tab. This tab stops its copy so the two don't play
+  // over each other (double sound, two saves racing), and offers to bring it back.
+  const pop = document.getElementById('popBtn');
+  if (pop) {
+    pop.href = '/play/' + B.game + '/popout' + location.search;
+    pop.addEventListener('click', () => {
+      const st = frame.closest('.stage');
+      if (!st || st.querySelector('.popped')) return;
+      frame.src = 'about:blank';
+      ready = false; gameOrigin = null;
+      const box = document.createElement('div'); box.className = 'gload popped'; box.style.setProperty('--c', '#8f6bff');
+      const inner = document.createElement('div'); inner.className = 'gl-in';
+      const b = document.createElement('b'); b.textContent = B.title + ' is playing in its own tab.';
+      const again = document.createElement('button'); again.type = 'button'; again.className = 'btn small'; again.textContent = 'Play here instead';
+      again.onclick = () => location.reload();
+      inner.append(b, again); box.append(inner); st.append(box);
+    });
+  }
   const fs = document.getElementById('fs');
   const stage = frame.closest('.stage');
   const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);

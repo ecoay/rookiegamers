@@ -113,35 +113,47 @@ function playDescription(g) {
   return /free/i.test(base) ? base : `${base} Play free in your browser on RookieGamers.`;
 }
 
-async function play(DB, req, env, url, slug) {
-  const [g, me] = await Promise.all([getGame(DB, slug), viewer(DB, req)]);
-  if (!g || !g.live) return notFound(me, 'That game isn\'t here (yet).');
+// The game frame for /play/<slug> and its pop-out: the source URL (with the referral and room
+// passed on), the sandbox, and the origins the portal answers. Null when the game can't be framed yet.
+function playFrame(env, g, url) {
   const frame = frameFor(env, g, url);
-  if (!frame) return notFound(me, 'This game is still being uploaded.');
+  if (!frame) return null;
   const ref = /^[a-z0-9-]{1,32}$/.test(url.searchParams.get('ref') || '') ? url.searchParams.get('ref') : null;
   const src = new URL(frame.src);
   // Staging only: Chrome's Local Network Access blocks a framed localhost game unless the frame
   // is allowed to reach the loopback network (names differ across Chrome versions).
   const loopback = env.STAGING === '1' && /^(localhost|127\.0\.0\.1|\[::1\])$/.test(src.hostname);
-  const frameAllow = 'autoplay; fullscreen; gamepad; clipboard-write; screen-wake-lock' + (loopback ? '; local-network-access; loopback-network; local-network' : '');
+  const allow = 'autoplay; fullscreen; gamepad; clipboard-write; screen-wake-lock' + (loopback ? '; local-network-access; loopback-network; local-network' : '');
   if (ref) src.searchParams.set('rg_ref', ref);
   // A multiplayer invite: the game reads the room with rg.invite.room().
   const room = /^[A-Za-z0-9_-]{1,40}$/.test(url.searchParams.get('room') || '') ? url.searchParams.get('room') : null;
   if (room) src.searchParams.set('rg_room', room);
+  return { frame, src, allow, ref };
+}
+const gameIframe = (g, f) => `<iframe id="game" onload="this.dataset.loaded=1" src="${esc(f.src.href)}" title="${esc(g.title)}" sandbox="${f.frame.sandbox}" allow="${f.allow}" allowfullscreen></iframe>`;
+const gameLoading = (g, f) => `<div class="gload" id="gameLoading" style="--c:${esc(g.color || '#8f6bff')}">${coverSrc(g) ? `<img src="${esc(coverSrc(g))}" alt="">` : ''}<div class="gl-in"><span class="spin" aria-hidden="true"></span><b>Loading ${esc(g.title)}...</b><span class="muted small gl-slow" hidden>Taking a while? <a href="${esc(f.src.href)}" target="_blank" rel="noopener">Open the game on its own</a></span></div></div>`;
+const signinDialog = g => `<dialog class="signin" id="signinDlg"><h3 style="margin-top:0">Sign in to save your scores</h3><p class="muted">One RookieGamers account works in every game.</p>${g.social_accounts ? `<p class="muted small">${SOCIAL_NOTE}</p>` : ''}
+<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="dlgGo" type="button">Sign in</button><button class="btn ghost" id="dlgNo" type="button">Keep playing as a guest</button></div></dialog>`;
+
+async function play(DB, req, env, url, slug) {
+  const [g, me] = await Promise.all([getGame(DB, slug), viewer(DB, req)]);
+  if (!g || !g.live) return notFound(me, 'That game isn\'t here (yet).');
+  const f = playFrame(env, g, url);
+  if (!f) return notFound(me, 'This game is still being uploaded.');
+  const { frame, ref } = f;
   const [monthly, alltime, hall, others, studioRow] = await Promise.all([topScores(DB, g, monthKey(), 10), topScores(DB, g, 'all', 10), fame(DB, { game: g.slug, limit: 9 }), frontPage(DB), g.studio ? getStudio(DB, g.studio) : null]);
   const studio = studioView(studioRow);
   const more = others.filter(o => o.slug !== g.slug).slice(0, 4);
   const v = gameView(g);
-  const body = `<div class="play"><div><div class="stage"><div class="gload" id="gameLoading" style="--c:${esc(g.color || '#8f6bff')}">${coverSrc(g) ? `<img src="${esc(coverSrc(g))}" alt="">` : ''}<div class="gl-in"><span class="spin" aria-hidden="true"></span><b>Loading ${esc(g.title)}...</b><span class="muted small gl-slow" hidden>Taking a while? <a href="${esc(src.href)}" target="_blank" rel="noopener">Open the game on its own</a></span></div></div><iframe id="game" onload="this.dataset.loaded=1" src="${esc(src.href)}" title="${esc(g.title)}" sandbox="${frame.sandbox}" allow="${frameAllow}" allowfullscreen></iframe></div>
-<div class="stagebar"><div><h1>${esc(g.title)}</h1><span class="muted">by ${esc(g.developer)}</span>${studio ? ` <a class="studio-by" href="/studio/${esc(studio.slug)}">${studioLogo(studio)}<span>${esc(studio.name)}</span></a>` : ''}</div><div class="acts"><button class="btn ghost small" id="soundBtn" type="button" aria-pressed="false" title="Mute or unmute the game">Sound on</button><button class="btn small" id="shareBtn" type="button">Share</button><button class="btn ghost small" id="fs" type="button">Full screen</button></div></div>
+  const body = `<div class="play"><div><div class="stage">${gameLoading(g, f)}${gameIframe(g, f)}</div>
+<div class="stagebar"><div><h1>${esc(g.title)}</h1><span class="muted">by ${esc(g.developer)}</span>${studio ? ` <a class="studio-by" href="/studio/${esc(studio.slug)}">${studioLogo(studio)}<span>${esc(studio.name)}</span></a>` : ''}</div><div class="acts"><button class="btn ghost small" id="soundBtn" type="button" aria-pressed="false" title="Mute or unmute the game">Sound on</button><button class="btn small" id="shareBtn" type="button">Share</button><button class="btn ghost small" id="fs" type="button">Full screen</button><a class="btn ghost small" id="popBtn" href="/play/${esc(g.slug)}/popout" target="_blank" rel="noopener" title="Play in its own tab, filling the window">Pop out</a></div></div>
 <p class="muted">${esc(g.blurb)}</p>${g.social_accounts ? `<p class="muted small">${SOCIAL_NOTE}</p>` : ''}</div>
 <aside class="side"><div class="panel"><h3><span>${esc(g.score_label)}</span><span class="tabs"><button type="button" data-b="m" aria-pressed="true">${esc(monthLabel(monthKey()))}</button><button type="button" data-b="a" aria-pressed="false">All time</button></span></h3>
 <div id="bm">${boardList(monthly, g.score_label)}</div><div id="ba" hidden>${boardList(alltime, g.score_label)}</div></div>
 <div class="panel"><h3>Hall of Fame</h3>${hall.length ? `<ol class="board">${hall.map(h => `<li class="top${h.rank}"><span class="n">${h.rank}</span><span class="who"><a href="/u/${esc(h.player.id)}">${esc(h.player.name)}</a><small>${esc(h.monthLabel)}</small></span><span class="s">${h.score.toLocaleString('en-US')}</span></li>`).join('')}</ol>` : '<p class="muted">At the end of each month the top 3 are kept here forever and earn a title shown across RookieGamers.</p>'}</div>
 <div class="panel banner" id="rgBanner" hidden></div>
 ${more.length ? `<div class="panel"><h3>Play next</h3><div class="shelf" style="grid-template-columns:repeat(2,minmax(0,1fr))">${more.map(card).join('')}</div></div>` : ''}</aside></div>
-<dialog class="signin" id="signinDlg"><h3 style="margin-top:0">Sign in to save your scores</h3><p class="muted">One RookieGamers account works in every game.</p>${g.social_accounts ? `<p class="muted small">${SOCIAL_NOTE}</p>` : ''}
-<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="dlgGo" type="button">Sign in</button><button class="btn ghost" id="dlgNo" type="button">Keep playing as a guest</button></div></dialog>
+${signinDialog(g)}
 ${shareDialog(me)}`;
   const boot = { game: v.slug, title: v.title, origins: frame.origins, ref, signedIn: !!me };
   const desc = playDescription(g);
@@ -149,6 +161,30 @@ ${shareDialog(me)}`;
     canonicalPath: '/play/' + g.slug, jsonld: playJSONLD(env, g, desc, studio),
     og: { title: `Play ${g.title} free on RookieGamers`, image: gameImage(env, g), alt: `${g.title} on RookieGamers` },
     scripts: `<script>window.RG_PLAY=${data(boot)}</script><script src="/portal.js"></script>` }));
+}
+
+// /play/<slug>/popout: the game alone in its own tab, filling the window under a slim bar with the
+// RG logo (back to the game page), the sound toggle, share, full screen, sign-in and the ad slot.
+// The same portal.js runs here, so sign-in, saves, scores and ads work as on the game page.
+async function popout(DB, req, env, url, slug) {
+  const [g, me] = await Promise.all([getGame(DB, slug), viewer(DB, req)]);
+  if (!g || !g.live) return notFound(me, 'That game isn\'t here (yet).');
+  const f = playFrame(env, g, url);
+  if (!f) return notFound(me, 'This game is still being uploaded.');
+  const v = gameView(g);
+  const back = '/play/' + g.slug;
+  const boot = { game: v.slug, title: v.title, origins: f.frame.origins, ref: f.ref, signedIn: !!me, popout: true };
+  const t = `${g.title} · RookieGamers`;
+  return html(`<!doctype html><html lang="en" class="pop"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>${esc(t)}</title><meta name="robots" content="noindex,follow"><link rel="canonical" href="${esc(canonical(back))}">${GA4_HEAD}
+<link rel="icon" href="/favicon.ico" sizes="48x48"><link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><meta name="theme-color" content="#0f0d16"><link rel="stylesheet" href="/site.css"></head><body class="pop">
+<header class="popbar"><a class="poplogo" href="${esc(back)}" title="Back to the ${esc(g.title)} page"><img src="/brand/rg-mark-64.png" width="24" height="24" alt="RookieGamers"></a><b class="poptitle">${esc(g.title)}</b>
+<div class="popad" id="rgBanner" data-slim hidden></div>
+<div class="acts"><button class="btn ghost small" id="soundBtn" type="button" aria-pressed="false" title="Mute or unmute the game">Sound on</button><button class="btn ghost small" id="shareBtn" type="button">Share</button><button class="btn ghost small" id="fs" type="button">Full screen</button>${me ? `<a class="me" href="/u/${esc(me.id)}#inventory" target="_blank" rel="noopener" title="Your profile">${avatar(me)}<span class="muted">Lv ${me.level}</span></a>` : `<a class="btn small" href="/signin?next=${encodeURIComponent(back + '/popout')}" id="signinLink">Sign in</a>`}</div></header>
+<div class="stage popstage">${gameLoading(g, f)}${gameIframe(g, f)}</div>
+${signinDialog(g)}
+${shareDialog(me)}
+<script>window.RG_PLAY=${data(boot)}</script><script src="/portal.js"></script></body></html>`);
 }
 
 // /s/<id>: a shared link. Link previews read the tags; people are sent on to the game, and
@@ -608,6 +644,7 @@ async function route(path, url, env, DB, req) {
   if (path === '/') return home(DB, req, env);
   if ((m = path.match(/^\/s\/(s[a-f0-9]{12})$/))) return sharePage(DB, req, env, m[1]);
   if ((m = path.match(/^\/play\/([a-z0-9-]{1,32})\/?$/))) return play(DB, req, env, url, m[1]);
+  if ((m = path.match(/^\/play\/([a-z0-9-]{1,32})\/popout\/?$/))) return popout(DB, req, env, url, m[1]);
   if ((m = path.match(/^\/studio\/([a-z0-9-]{1,32})\/?$/)) && STUDIO_SLUG_RE.test(m[1])) return studioPage(DB, req, env, m[1]);
   if (path === '/hall-of-fame') return hallOfFame(DB, req, env);
   if (path === '/shop') return shopPage(DB, req, env);

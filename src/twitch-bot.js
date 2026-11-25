@@ -176,19 +176,86 @@ export async function drainTwitchQueue(env, DB) {
   ]);
   if (chat.status === 'rejected') throw chat.reason;
   const { messages = [] } = chat.value;
-  const outcomes = await Promise.allSettled(messages.map(async ({ channel, message }) => {
+  // A burst of snipes used to go out as one message each, all at once, and Twitch's chat rate
+  // limit dropped most of them. Now each burst is merged into a few lines that name everyone,
+  // sent one at a time per channel.
+  const byChannel = new Map();
+  for (const line of packSnipeChat(messages)) {
+    if (!byChannel.has(line.channel)) byChannel.set(line.channel, []);
+    byChannel.get(line.channel).push(line.message);
+  }
+  let dropped = 0;
+  await Promise.all([...byChannel].map(async ([channel, lines]) => {
     const live = await DB.prepare('SELECT live FROM twitch_bot_channels WHERE id = ?')
       .bind(channel).first();
     if (!live?.live) return;
-    const reply = await helix(env, '/chat/messages', {
-      broadcaster_id: channel, sender_id: botId, message, for_source_only: true,
-    });
-    if (!reply.ok || !(await reply.json()).data?.[0]?.is_sent) {
-      throw new Error('Twitch did not send the snipe notification');
+    for (const [i, message] of lines.entries()) {
+      if (i) await new Promise(resolve => setTimeout(resolve, SEND_GAP_MS));
+      try {
+        const reply = await helix(env, '/chat/messages', {
+          broadcaster_id: channel, sender_id: botId, message, for_source_only: true,
+        });
+        const sent = reply.ok ? (await reply.json()).data?.[0] : null;
+        if (!sent?.is_sent) {
+          dropped++;
+          console.warn('Twitch snipe notification dropped', sent?.drop_reason?.code || reply.status);
+        }
+      } catch {
+        dropped++;
+      }
     }
   }));
-  if (outcomes.some(outcome => outcome.status === 'rejected')) console.warn('Twitch snipe notification dropped');
+  if (dropped) console.warn('Twitch snipe notifications dropped: ' + dropped);
   if (queue.status === 'rejected') throw queue.reason;
+}
+
+/** Space between chat lines in one channel, under Twitch's bot rate limit. */
+const SEND_GAP_MS = 1100;
+/** Twitch chat messages are capped at 500 characters. */
+const CHAT_MAX = 480;
+const SNIPED = /^@(\w+) sniped @(\w+)(?: from @(\w+))?\.$/;
+const SNIPED_YOU = /^@(\w+) just sniped @(\w+) from you\.$/;
+
+const names = list => list.length < 2 ? list.join('') : list.slice(0, -1).join(', ') + ' and ' + list[list.length - 1];
+
+/**
+ * Merge a channel's snipe lines into as few chat messages as fit: "@ecoay sniped @a, @b and @c
+ * from @seller." for the sniper's channel, "@ecoay just sniped @a and @b from you." for the
+ * seller's. Lines in any other shape go out as they are. Order is kept per group.
+ */
+export function packSnipeChat(messages) {
+  const groups = new Map();
+  const out = [];
+  for (const { channel, message } of messages) {
+    let m = SNIPED.exec(message);
+    let key; let head; let tail;
+    if (m) {
+      key = channel + '|s|' + m[1] + '|' + (m[3] || '');
+      head = '@' + m[1] + ' sniped ';
+      tail = m[3] ? ' from @' + m[3] + '.' : '.';
+    } else if ((m = SNIPED_YOU.exec(message))) {
+      key = channel + '|y|' + m[1];
+      head = '@' + m[1] + ' just sniped ';
+      tail = ' from you.';
+    } else {
+      out.push({ channel, message });
+      continue;
+    }
+    if (!groups.has(key)) groups.set(key, { channel, head, tail, targets: [] });
+    groups.get(key).targets.push('@' + m[2]);
+  }
+  for (const { channel, head, tail, targets } of groups.values()) {
+    let batch = [];
+    for (const target of targets) {
+      const next = [...batch, target];
+      if (batch.length && (head + names(next) + tail).length > CHAT_MAX) {
+        out.push({ channel, message: head + names(batch) + tail });
+        batch = [target];
+      } else batch = next;
+    }
+    if (batch.length) out.push({ channel, message: head + names(batch) + tail });
+  }
+  return out;
 }
 
 async function processEvent(env, DB, signed) {
